@@ -1,7 +1,14 @@
 # Cinemas
+```
+finds top N movies with star rating greater than STARS
 
-[TODO. There will be project description]
+usage: cinemas.py [--help] [--n N] [--stars STARS]
 
+optional arguments:
+  --help         show this help message and exit
+  --n N          number of movies
+  --stars STARS  stars rating
+```
 # Project Goals
 
 The code is written for educational purposes. Training course for web-developers - [DEVMAN.org](https://devman.org)
