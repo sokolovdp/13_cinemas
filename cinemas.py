@@ -8,7 +8,7 @@ from operator import itemgetter
 import random
 import logging
 
-LOG_MODE = False
+LOGGING_ON = False
 NPSB = '\xa0'  # special space character &npsb;
 user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
@@ -36,7 +36,7 @@ def load_good_proxy_list() -> "list":
     if response.ok:
         return list(filter(good_proxy, response.text.split('\n')))
     else:
-        if LOG_MODE:
+        if LOGGING_ON:
             logger.debug("can't load proxies, program aborted")
         exit(1)
 
@@ -78,7 +78,7 @@ def fetch_afisha_page() -> "class 'bytes'":
     if page['html']:
         return page['html']
     else:
-        if LOG_MODE:
+        if LOGGING_ON:
             logger.debug("can't load afisha page, error {}, program aborted".format(page['err']))
         exit(2)
 
@@ -102,7 +102,7 @@ def get_afisha_movie_rating(soup: "class 'bs4.BeautifulSoup'") -> "float":
         rating = float(rating_text.replace(',', '.'))
     except ValueError:
         rating = 0
-        if LOG_MODE:
+        if LOGGING_ON:
             logger.debug("get rating value error: '{}'".format(rating_text))
     return rating
 
@@ -117,7 +117,7 @@ def get_movie_votes(soup: "class 'bs4.BeautifulSoup'") -> "int":
         votes = int(votes_text)
     except ValueError:
         votes = 0
-        if LOG_MODE:
+        if LOGGING_ON:
             logger.debug("get votes value error: '{}'".format(votes_text))
     return votes
 
@@ -132,7 +132,7 @@ def get_movie_production_year(soup: "class 'bs4.BeautifulSoup'") -> "int":
         year = int(year_text)
     except ValueError:
         year = 0
-        if LOG_MODE:
+        if LOGGING_ON:
             logger.debug("get year value error: '{}'".format(year_text))
     return year
 
@@ -141,7 +141,7 @@ def get_movie_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
     try:
         timetable_url = soup.find('a', attrs={'id': 'ctl00_CenterPlaceHolder_ucTab_rpTabs_ctl02_hlItem'}).attrs['href']
     except AttributeError:
-        if LOG_MODE:
+        if LOGGING_ON:
             logger.debug("attr 'href' error in get_movie_cinemas()")
         return 0
     else:
@@ -151,7 +151,7 @@ def get_movie_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
             cinemas_list = soup2.find_all('td', attrs={'class': "b-td-item"})
             return len(cinemas_list)
         else:
-            if LOG_MODE:
+            if LOGGING_ON:
                 logger.debug("can't load timetable page, error {}".format(movie_timetable_page['err']))
             return 0
 
@@ -171,7 +171,7 @@ def get_rating_votes_kp_find_page(html_find: "str") -> "tuple":
             votes = re.search(r"\((\d+)\)", rating_text).group(1)
             return float(rating), int(votes)
     else:
-        if LOG_MODE:
+        if LOGGING_ON:
             logger.debug("can't find class 'element most_wanted' at get_rating_votes_from_kinopoisk_find_page")
         return -1, -1
 
@@ -181,7 +181,7 @@ def get_rating_votes_kp_movie_page(html_movie: "str") -> "tuple":
     soup = BeautifulSoup(html_movie, "lxml")
     rating_block = soup.find('div', attrs={'id': 'block_rating'})
     if not rating_block:
-        if LOG_MODE:
+        if LOGGING_ON:
             logger.debug("error for div with id='block_rating' at get_rating_votes_from_kinopoisk_movie_page")
         return -1, -1
     else:
@@ -189,14 +189,14 @@ def get_rating_votes_kp_movie_page(html_movie: "str") -> "tuple":
             rating = rating_block.find('span', attrs={'class': 'rating_ball'}).text
             votes = rating_block.find('span', attrs={'class': 'ratingCount'}).text.replace(NPSB, '')
         except AttributeError:
-            if LOG_MODE:
+            if LOGGING_ON:
                 logger.debug("attr error for span with class='rating...' at get_rating_votes_from_kinopoisk_movie_page")
             return -1, -1
         else:
             return float(rating), int(votes)
 
 
-def get_rating_votes_from_kinopoisk(title: "str", year: "int") -> "class 'bytes'":
+def get_rating_votes_from_kp(title: "str", year: "int") -> "class 'bytes'":
     title_hex = "%" + "%".join("{:02x}".format(b) for b in bytearray(title.encode('utf-8'))).upper()
     url_find = "http://www.kinopoisk.ru/s/type/film/find/{}/m_act%5Byear%5D/{}".format(title_hex, year)
     page = get_html(url_find)
@@ -206,16 +206,16 @@ def get_rating_votes_from_kinopoisk(title: "str", year: "int") -> "class 'bytes'
         elif "www.kinopoisk.ru/film/" in page['url']:  # kinopoisk is in the page of the exact movie
             kp_rating, kp_votes = get_rating_votes_kp_movie_page(page['html'])
         else:
-            if LOG_MODE:
+            if LOGGING_ON:
                 logger.debug("can't get rating and votes from wrong kinopoisk movie url {}".format(page['url']))
             kp_rating, kp_votes = 0, 0
         if kp_rating == -1:  # check if there were some errors
-            if LOG_MODE:
+            if LOGGING_ON:
                 logger.debug("rating and votes parsing problem with '{}' ({}) in kinopoisk.ru ".format(title, year))
             kp_rating, kp_votes = 0, 0
         return kp_rating, kp_votes
     else:
-        if LOG_MODE:
+        if LOGGING_ON:
             logger.debug("can't load kinopoisk page, error {}".format(page['err']))
         return 0, 0
 
@@ -228,10 +228,10 @@ def fetch_movie_info(movie_title: "str", movie_url: "str") -> "tuple":
         rating = get_afisha_movie_rating(soup)
         year = get_movie_production_year(soup)
         cinemas = get_movie_cinemas(soup)
-        kp_rating, kp_votes = get_rating_votes_from_kinopoisk(movie_title, year)
+        kp_rating, kp_votes = get_rating_votes_from_kp(movie_title, year)
         return year, rating, votes, cinemas, kp_rating, kp_votes
     else:
-        if LOG_MODE:
+        if LOGGING_ON:
             logger.debug("can't load movie page from afisha site, error {}".format(movie_page['err']))
 
 
@@ -284,8 +284,8 @@ if __name__ == '__main__':
                     help="  create log file 'cinemas_log_file.txt'")
     args = ap.parse_args(sys.argv[1:])
 
-    LOG_MODE = args.log
-    if LOG_MODE:
+    LOGGING_ON = args.log
+    if LOGGING_ON:
         logger = create_logger()  # initialize global logger handler
 
     start_time = time.clock()
