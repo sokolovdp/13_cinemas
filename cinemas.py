@@ -8,6 +8,7 @@ from operator import itemgetter
 import random
 import logging
 
+LOG_MODE = False
 NPSB = '\xa0'  # special space character &npsb;
 user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
@@ -16,7 +17,6 @@ TIME_UPDATE_PROXY = 30 * 60 - 1  # 30 minutes - 1 sec
 start_time = 0  # start time to count 30 minutes of proxies validity
 proxies_list = list()  # list of valid proxies to use for parsing
 next_proxy = 0
-LOG_MODE = False
 
 
 def good_proxy(proxy_ip: "str") -> "bool":
@@ -52,7 +52,7 @@ def get_proxy() -> "dict":
     return {"http": proxy_addr, "https": proxy_addr}
 
 
-def get_html_from_url(url_full: "str") -> "dict":
+def get_html(url_full: "str") -> "dict":
     global start_time
     global proxies_list
 
@@ -74,7 +74,7 @@ def get_html_from_url(url_full: "str") -> "dict":
 
 
 def fetch_afisha_page() -> "class 'bytes'":
-    page = get_html_from_url("https://www.afisha.ru/msk/schedule_cinema/")
+    page = get_html("https://www.afisha.ru/msk/schedule_cinema/")
     if page['html']:
         return page['html']
     else:
@@ -145,7 +145,7 @@ def get_movie_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
             logger.debug("attr 'href' error in get_movie_cinemas()")
         return 0
     else:
-        movie_timetable_page = get_html_from_url("https://www.afisha.ru" + timetable_url)
+        movie_timetable_page = get_html("https://www.afisha.ru" + timetable_url)
         if movie_timetable_page['html']:
             soup2 = BeautifulSoup(movie_timetable_page['html'], "lxml")
             cinemas_list = soup2.find_all('td', attrs={'class': "b-td-item"})
@@ -156,7 +156,7 @@ def get_movie_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
             return 0
 
 
-def get_rating_votes_from_kinopoisk_find_page(html_find: "str") -> "tuple":
+def get_rating_votes_kp_find_page(html_find: "str") -> "tuple":
     assert html_find is not None, "get_rating_votes_from_kinopoisk_find_page(), empty html_find"
     soup = BeautifulSoup(html_find, "lxml")
     rating_block = soup.find('div', attrs={'class': 'element most_wanted'})
@@ -176,7 +176,7 @@ def get_rating_votes_from_kinopoisk_find_page(html_find: "str") -> "tuple":
         return -1, -1
 
 
-def get_rating_votes_from_kinopoisk_movie_page(html_movie: "str") -> "tuple":
+def get_rating_votes_kp_movie_page(html_movie: "str") -> "tuple":
     assert html_movie is not None, "get_rating_votes_from_kinopoisk_movie_page(), empty html_movie"
     soup = BeautifulSoup(html_movie, "lxml")
     rating_block = soup.find('div', attrs={'id': 'block_rating'})
@@ -199,12 +199,12 @@ def get_rating_votes_from_kinopoisk_movie_page(html_movie: "str") -> "tuple":
 def get_rating_votes_from_kinopoisk(title: "str", year: "int") -> "class 'bytes'":
     title_hex = "%" + "%".join("{:02x}".format(b) for b in bytearray(title.encode('utf-8'))).upper()
     url_find = "http://www.kinopoisk.ru/s/type/film/find/{}/m_act%5Byear%5D/{}".format(title_hex, year)
-    page = get_html_from_url(url_find)
+    page = get_html(url_find)
     if page['html']:
         if "/type/film/find/" in page['url']:  # kinopoisk is in the find page - list of many movies
-            kp_rating, kp_votes = get_rating_votes_from_kinopoisk_find_page(page['html'])
+            kp_rating, kp_votes = get_rating_votes_kp_find_page(page['html'])
         elif "www.kinopoisk.ru/film/" in page['url']:  # kinopoisk is in the page of the exact movie
-            kp_rating, kp_votes = get_rating_votes_from_kinopoisk_movie_page(page['html'])
+            kp_rating, kp_votes = get_rating_votes_kp_movie_page(page['html'])
         else:
             if LOG_MODE:
                 logger.debug("can't get rating and votes from wrong kinopoisk movie url {}".format(page['url']))
@@ -221,7 +221,7 @@ def get_rating_votes_from_kinopoisk(title: "str", year: "int") -> "class 'bytes'
 
 
 def fetch_movie_info(movie_title: "str", movie_url: "str") -> "tuple":
-    movie_page = get_html_from_url(movie_url)
+    movie_page = get_html(movie_url)
     if movie_page['html']:
         soup = BeautifulSoup(movie_page['html'], "lxml")
         votes = get_movie_votes(soup)
