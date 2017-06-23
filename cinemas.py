@@ -21,7 +21,7 @@ next_proxy = 0
 def good_proxy(proxy_ip: "str") -> "bool":
     try:
         proxy_addr = "http://" + proxy_ip
-        _ = requests.get("http://www.example.com", proxies={"http": proxy_addr, "https": proxy_addr}, timeout=1)
+        requests.get("http://www.example.com", proxies={"http": proxy_addr, "https": proxy_addr}, timeout=1)
     except OSError:
         return False
     except requests.exceptions.Timeout:
