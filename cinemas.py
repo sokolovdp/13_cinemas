@@ -209,7 +209,7 @@ def get_rating_votes_from_kinopoisk(title: "str", year: "int") -> "class 'bytes'
             if LOG_MODE:
                 logger.debug("can't get rating and votes from wrong kinopoisk movie url {}".format(page['url']))
             kp_rating, kp_votes = 0, 0
-        if kp_rating == -1:
+        if kp_rating == -1:  # check if there were some errors
             if LOG_MODE:
                 logger.debug("rating and votes parsing problem with '{}' ({}) in kinopoisk.ru ".format(title, year))
             kp_rating, kp_votes = 0, 0
