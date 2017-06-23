@@ -41,7 +41,7 @@ def load_good_proxy_list() -> "list":
         exit(1)
 
 
-def get_proxy() -> "dict":
+def next_valid_proxy() -> "dict":
     global proxies_list
     global next_proxy
 
@@ -52,7 +52,7 @@ def get_proxy() -> "dict":
     return {"http": proxy_addr, "https": proxy_addr}
 
 
-def get_html(url_full: "str") -> "dict":
+def load_html(url_full: "str") -> "dict":
     global start_time
     global proxies_list
 
@@ -61,7 +61,8 @@ def get_html(url_full: "str") -> "dict":
         start_time = time.clock()
     while True:
         try:
-            response = requests.get(url_full, headers=user_agent, timeout=MAX_RESPONSE_TIMEOUT, proxies=get_proxy())
+            response = requests.get(url_full, headers=user_agent, timeout=MAX_RESPONSE_TIMEOUT,
+                                    proxies=next_valid_proxy())
             if response.ok:
                 time.sleep(random.random())
                 return {'html': response.text, 'url': response.url, 'err': None}
@@ -74,7 +75,7 @@ def get_html(url_full: "str") -> "dict":
 
 
 def fetch_afisha_page() -> "class 'bytes'":
-    page = get_html("https://www.afisha.ru/msk/schedule_cinema/")
+    page = load_html("https://www.afisha.ru/msk/schedule_cinema/")
     if page['html']:
         return page['html']
     else:
@@ -92,7 +93,7 @@ def parse_afisha_list(raw_html: "class 'bytes'") -> "list":
     return movies_info
 
 
-def get_afisha_movie_rating(soup: "class 'bs4.BeautifulSoup'") -> "float":
+def scrape_afisha_movie_rating(soup: "class 'bs4.BeautifulSoup'") -> "float":
     try:
         rating_text = soup.find('p', attrs={'class': 'stars pngfix'}).attrs['title']
         rating_text = rating_text.split(' ')[2].split(NPSB)[0]
@@ -107,7 +108,7 @@ def get_afisha_movie_rating(soup: "class 'bs4.BeautifulSoup'") -> "float":
     return rating
 
 
-def get_movie_votes(soup: "class 'bs4.BeautifulSoup'") -> "int":
+def scrape_movie_votes(soup: "class 'bs4.BeautifulSoup'") -> "int":
     try:
         votes_text = soup.find('p', attrs={'class': 'details s-update-clickcount'}).text.strip()
         votes_text = votes_text.split(' ')[1]
@@ -122,7 +123,7 @@ def get_movie_votes(soup: "class 'bs4.BeautifulSoup'") -> "int":
     return votes
 
 
-def get_movie_production_year(soup: "class 'bs4.BeautifulSoup'") -> "int":
+def scrape_movie_production_year(soup: "class 'bs4.BeautifulSoup'") -> "int":
     year_text = soup.find('span', attrs={'class': 'creation'}).text.strip()
     if year_text:
         year_text = re.search(r"(\d{4})", year_text).group(1)
@@ -137,15 +138,15 @@ def get_movie_production_year(soup: "class 'bs4.BeautifulSoup'") -> "int":
     return year
 
 
-def get_movie_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
+def scrape_movie_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
     try:
         timetable_url = soup.find('a', attrs={'id': 'ctl00_CenterPlaceHolder_ucTab_rpTabs_ctl02_hlItem'}).attrs['href']
     except AttributeError:
         if LOGGING_ON:
-            logger.debug("attr 'href' error in get_movie_cinemas()")
+            logger.debug("attr 'href' error in scrape_movie_cinemas()")
         return 0
     else:
-        movie_timetable_page = get_html("https://www.afisha.ru" + timetable_url)
+        movie_timetable_page = load_html("https://www.afisha.ru" + timetable_url)
         if movie_timetable_page['html']:
             soup2 = BeautifulSoup(movie_timetable_page['html'], "lxml")
             cinemas_list = soup2.find_all('td', attrs={'class': "b-td-item"})
@@ -156,8 +157,8 @@ def get_movie_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
             return 0
 
 
-def get_rating_votes_kp_find_page(html_find: "str") -> "tuple":
-    assert html_find is not None, "get_rating_votes_from_kinopoisk_find_page(), empty html_find"
+def scrape_rating_votes_kp_find_page(html_find: "str") -> "tuple":
+    assert html_find is not None, "scrape_rating_votes_from_kinopoisk_find_page(), empty html_find"
     soup = BeautifulSoup(html_find, "lxml")
     rating_block = soup.find('div', attrs={'class': 'element most_wanted'})
     if rating_block is not None:
@@ -172,17 +173,17 @@ def get_rating_votes_kp_find_page(html_find: "str") -> "tuple":
             return float(rating), int(votes)
     else:
         if LOGGING_ON:
-            logger.debug("can't find class 'element most_wanted' at get_rating_votes_from_kinopoisk_find_page")
+            logger.debug("can't find class 'element most_wanted' at scrape_rating_votes_from_kinopoisk_find_page")
         return -1, -1
 
 
-def get_rating_votes_kp_movie_page(html_movie: "str") -> "tuple":
-    assert html_movie is not None, "get_rating_votes_from_kinopoisk_movie_page(), empty html_movie"
+def scrape_rating_votes_kp_movie_page(html_movie: "str") -> "tuple":
+    assert html_movie is not None, "scrape_rating_votes_from_kinopoisk_movie_page(), empty html_movie"
     soup = BeautifulSoup(html_movie, "lxml")
     rating_block = soup.find('div', attrs={'id': 'block_rating'})
     if not rating_block:
         if LOGGING_ON:
-            logger.debug("error for div with id='block_rating' at get_rating_votes_from_kinopoisk_movie_page")
+            logger.debug("error for div with id='block_rating' at scrape_rating_votes_from_kinopoisk_movie_page")
         return -1, -1
     else:
         try:
@@ -190,21 +191,21 @@ def get_rating_votes_kp_movie_page(html_movie: "str") -> "tuple":
             votes = rating_block.find('span', attrs={'class': 'ratingCount'}).text.replace(NPSB, '')
         except AttributeError:
             if LOGGING_ON:
-                logger.debug("attr error for span with class='rating...' at get_rating_votes_from_kinopoisk_movie_page")
+                logger.debug("attr error for span with class='rating...' at scrape_rating_votes_from_kinopoisk_movie_page")
             return -1, -1
         else:
             return float(rating), int(votes)
 
 
-def get_rating_votes_from_kp(title: "str", year: "int") -> "class 'bytes'":
+def scrape_rating_votes_from_kp(title: "str", year: "int") -> "class 'bytes'":
     title_hex = "%" + "%".join("{:02x}".format(b) for b in bytearray(title.encode('utf-8'))).upper()
     url_find = "http://www.kinopoisk.ru/s/type/film/find/{}/m_act%5Byear%5D/{}".format(title_hex, year)
-    page = get_html(url_find)
+    page = load_html(url_find)
     if page['html']:
         if "/type/film/find/" in page['url']:  # kinopoisk is in the find page - list of many movies
-            kp_rating, kp_votes = get_rating_votes_kp_find_page(page['html'])
+            kp_rating, kp_votes = scrape_rating_votes_kp_find_page(page['html'])
         elif "www.kinopoisk.ru/film/" in page['url']:  # kinopoisk is in the page of the exact movie
-            kp_rating, kp_votes = get_rating_votes_kp_movie_page(page['html'])
+            kp_rating, kp_votes = scrape_rating_votes_kp_movie_page(page['html'])
         else:
             if LOGGING_ON:
                 logger.debug("can't get rating and votes from wrong kinopoisk movie url {}".format(page['url']))
@@ -221,14 +222,14 @@ def get_rating_votes_from_kp(title: "str", year: "int") -> "class 'bytes'":
 
 
 def fetch_movie_info(movie_title: "str", movie_url: "str") -> "tuple":
-    movie_page = get_html(movie_url)
+    movie_page = load_html(movie_url)
     if movie_page['html']:
         soup = BeautifulSoup(movie_page['html'], "lxml")
-        votes = get_movie_votes(soup)
-        rating = get_afisha_movie_rating(soup)
-        year = get_movie_production_year(soup)
-        cinemas = get_movie_cinemas(soup)
-        kp_rating, kp_votes = get_rating_votes_from_kp(movie_title, year)
+        votes = scrape_movie_votes(soup)
+        rating = scrape_afisha_movie_rating(soup)
+        year = scrape_movie_production_year(soup)
+        cinemas = scrape_movie_cinemas(soup)
+        kp_rating, kp_votes = scrape_rating_votes_from_kp(movie_title, year)
         return year, rating, votes, cinemas, kp_rating, kp_votes
     else:
         if LOGGING_ON:
