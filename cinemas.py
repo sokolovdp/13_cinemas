@@ -246,7 +246,7 @@ def main(min_rating: "float", how_many_movies: "int"):
 
 
 def create_logger(log_to_file=False, log_to_console=False):
-    mylogger = logging.getLogger()  # logger handler
+    mylogger = logging.getLogger()
     formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
     mylogger.setLevel(logging.DEBUG)
     if log_to_file:
@@ -268,9 +268,11 @@ if __name__ == '__main__':
     ap.add_argument("--stars", dest="stars", action="store", type=float, default=3.1, help="  stars rating")
     ap.add_argument("--log", dest="log", action="store_true", default=False,
                     help="  create log file 'cinemas_log_file.txt'")
+    ap.add_argument("--verbose", dest="verbose", action="store_true", default=False,
+                    help="  output debug information to console")
     args = ap.parse_args(sys.argv[1:])
 
-    logger = create_logger(log_to_file=args.log)  # initialize global logger handler
+    logger = create_logger(log_to_file=args.log, log_to_console=args.verbose)  # initialize global logger handler
 
     start_time = time.clock()
     proxies_list = load_good_proxy_list()
