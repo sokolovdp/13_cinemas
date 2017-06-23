@@ -11,7 +11,7 @@ import logging
 NPSB = '\xa0'  # special space character &npsb;
 user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
-MAX_RESPONSE_TIMEOUT = 4  # max response timeout to get answer from site
+MAX_RESPONSE_TIMEOUT = 7  # max response timeout to get answer from site
 TIME_UPDATE_PROXY = 30 * 60 - 1  # 30 minutes - 1 sec
 start_time = 0  # start time to count 30 minutes of proxies validity
 proxies_list = list()  # list of valid proxies to use for parsing
@@ -50,26 +50,36 @@ def next_valid_proxy() -> "dict":
     return {"http": proxy_addr, "https": proxy_addr}
 
 
-def load_html(url_full: "str") -> "dict":
+def update_proxies_list_if_needed():  # reload proxies list after 30 minutes
     global start_time
     global proxies_list
 
-    if time.clock() - start_time >= TIME_UPDATE_PROXY:  # reload proxies list after 30 minutes
+    if time.clock() - start_time >= TIME_UPDATE_PROXY:
         proxies_list = load_good_proxy_list()
         start_time = time.clock()
+
+
+def make_response(html=None, url=None, err=None):
+    return {'html': html, 'url': url, 'err': err}
+
+
+def load_html(url: "str") -> "dict":
+    update_proxies_list_if_needed()
     while True:
         try:
-            response = requests.get(url_full, headers=user_agent, timeout=MAX_RESPONSE_TIMEOUT,
-                                    proxies=next_valid_proxy())
+            response = requests.get(url, headers=user_agent, timeout=MAX_RESPONSE_TIMEOUT, proxies=next_valid_proxy())
             if response.ok:
-                time.sleep(random.random())
-                return {'html': response.text, 'url': response.url, 'err': None}
+                time.sleep(random.random())  # wait random period between 0 - 1 sec
+                return make_response(html=response.text, url=response.url)
             else:
-                return {'html': None, 'url': None, 'err': "get error {}".format(response.status_code)}
-        except OSError:
-            pass
+                logger.debug('load_html - response error')
+                return make_response(err=str(response.status_code))
         except requests.exceptions.Timeout:
-            return {'html': None, 'url': None, 'err': "get {} secs timeout error".format(MAX_RESPONSE_TIMEOUT)}
+            logger.debug('load_html - timeout error')
+            return make_response(err="load_html timeout error")
+        except OSError:  # Tunnel connection failed: 403 Forbidden
+            logger.debug('load_html - OSError: Tunnel connection failed: 403 Forbidden')
+            continue
 
 
 def fetch_afisha_page() -> "class 'bytes'":
@@ -77,7 +87,7 @@ def fetch_afisha_page() -> "class 'bytes'":
     if page['html']:
         return page['html']
     else:
-        logger.debug("can't load afisha page, error {}, program aborted".format(page['err']))
+        print("can't load afisha page, error {}, program aborted".format(page['err']))
         exit(2)
 
 
