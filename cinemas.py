@@ -8,7 +8,6 @@ from operator import itemgetter
 import random
 import logging
 
-LOGGING_ON = False
 NPSB = '\xa0'  # special space character &npsb;
 user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
@@ -36,8 +35,7 @@ def load_good_proxy_list() -> "list":
     if response.ok:
         return list(filter(good_proxy, response.text.split('\n')))
     else:
-        if LOGGING_ON:
-            logger.debug("can't load proxies, program aborted")
+        logger.debug("can't load proxies, program aborted")
         exit(1)
 
 
@@ -79,8 +77,7 @@ def fetch_afisha_page() -> "class 'bytes'":
     if page['html']:
         return page['html']
     else:
-        if LOGGING_ON:
-            logger.debug("can't load afisha page, error {}, program aborted".format(page['err']))
+        logger.debug("can't load afisha page, error {}, program aborted".format(page['err']))
         exit(2)
 
 
@@ -103,8 +100,7 @@ def scrape_afisha_movie_rating(soup: "class 'bs4.BeautifulSoup'") -> "float":
         rating = float(rating_text.replace(',', '.'))
     except ValueError:
         rating = 0
-        if LOGGING_ON:
-            logger.debug("get rating value error: '{}'".format(rating_text))
+        logger.debug("get rating value error: '{}'".format(rating_text))
     return rating
 
 
@@ -118,8 +114,7 @@ def scrape_movie_votes(soup: "class 'bs4.BeautifulSoup'") -> "int":
         votes = int(votes_text)
     except ValueError:
         votes = 0
-        if LOGGING_ON:
-            logger.debug("get votes value error: '{}'".format(votes_text))
+        logger.debug("get votes value error: '{}'".format(votes_text))
     return votes
 
 
@@ -133,8 +128,7 @@ def scrape_movie_production_year(soup: "class 'bs4.BeautifulSoup'") -> "int":
         year = int(year_text)
     except ValueError:
         year = 0
-        if LOGGING_ON:
-            logger.debug("get year value error: '{}'".format(year_text))
+        logger.debug("get year value error: '{}'".format(year_text))
     return year
 
 
@@ -142,8 +136,7 @@ def scrape_movie_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
     try:
         timetable_url = soup.find('a', attrs={'id': 'ctl00_CenterPlaceHolder_ucTab_rpTabs_ctl02_hlItem'}).attrs['href']
     except AttributeError:
-        if LOGGING_ON:
-            logger.debug("attr 'href' error in scrape_movie_cinemas()")
+        logger.debug("attr 'href' error in scrape_movie_cinemas()")
         return 0
     else:
         movie_timetable_page = load_html("https://www.afisha.ru" + timetable_url)
@@ -152,8 +145,7 @@ def scrape_movie_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
             cinemas_list = soup2.find_all('td', attrs={'class': "b-td-item"})
             return len(cinemas_list)
         else:
-            if LOGGING_ON:
-                logger.debug("can't load timetable page, error {}".format(movie_timetable_page['err']))
+            logger.debug("can't load timetable page, error {}".format(movie_timetable_page['err']))
             return 0
 
 
@@ -172,8 +164,7 @@ def scrape_rating_votes_kp_find_page(html_find: "str") -> "tuple":
             votes = re.search(r"\((\d+)\)", rating_text).group(1)
             return float(rating), int(votes)
     else:
-        if LOGGING_ON:
-            logger.debug("can't find class 'element most_wanted' at scrape_rating_votes_from_kinopoisk_find_page")
+        logger.debug("can't find class 'element most_wanted' at scrape_rating_votes_from_kinopoisk_find_page")
         return -1, -1
 
 
@@ -182,16 +173,14 @@ def scrape_rating_votes_kp_movie_page(html_movie: "str") -> "tuple":
     soup = BeautifulSoup(html_movie, "lxml")
     rating_block = soup.find('div', attrs={'id': 'block_rating'})
     if not rating_block:
-        if LOGGING_ON:
-            logger.debug("error for div with id='block_rating' at scrape_rating_votes_from_kinopoisk_movie_page")
+        logger.debug("error for div with id='block_rating' at scrape_rating_votes_from_kinopoisk_movie_page")
         return -1, -1
     else:
         try:
             rating = rating_block.find('span', attrs={'class': 'rating_ball'}).text
             votes = rating_block.find('span', attrs={'class': 'ratingCount'}).text.replace(NPSB, '')
         except AttributeError:
-            if LOGGING_ON:
-                logger.debug("attr error for span with class='rating...' at scrape_rating_votes_from_kinopoisk_movie_page")
+            logger.debug("attr error for span with class='rating...' at scrape_rating_votes_from_kinopoisk_movie_page")
             return -1, -1
         else:
             return float(rating), int(votes)
@@ -207,17 +196,14 @@ def scrape_rating_votes_from_kp(title: "str", year: "int") -> "class 'bytes'":
         elif "www.kinopoisk.ru/film/" in page['url']:  # kinopoisk is in the page of the exact movie
             kp_rating, kp_votes = scrape_rating_votes_kp_movie_page(page['html'])
         else:
-            if LOGGING_ON:
-                logger.debug("can't get rating and votes from wrong kinopoisk movie url {}".format(page['url']))
+            logger.debug("can't get rating and votes from wrong kinopoisk movie url {}".format(page['url']))
             kp_rating, kp_votes = 0, 0
         if kp_rating == -1:  # check if there were some errors
-            if LOGGING_ON:
-                logger.debug("rating and votes parsing problem with '{}' ({}) in kinopoisk.ru ".format(title, year))
+            logger.debug("rating and votes parsing problem with '{}' ({}) in kinopoisk.ru ".format(title, year))
             kp_rating, kp_votes = 0, 0
         return kp_rating, kp_votes
     else:
-        if LOGGING_ON:
-            logger.debug("can't load kinopoisk page, error {}".format(page['err']))
+        logger.debug("can't load kinopoisk page, error {}".format(page['err']))
         return 0, 0
 
 
@@ -232,8 +218,7 @@ def fetch_movie_info(movie_title: "str", movie_url: "str") -> "tuple":
         kp_rating, kp_votes = scrape_rating_votes_from_kp(movie_title, year)
         return year, rating, votes, cinemas, kp_rating, kp_votes
     else:
-        if LOGGING_ON:
-            logger.debug("can't load movie page from afisha site, error {}".format(movie_page['err']))
+        logger.debug("can't load movie page from afisha site, error {}".format(movie_page['err']))
 
 
 def output_movies_to_console(movies_list: "list"):
@@ -260,20 +245,20 @@ def main(min_rating: "float", how_many_movies: "int"):
     output_movies_to_console(best_movies)
 
 
-def create_logger(copy_to_console=False):
+def create_logger(log_to_file=False, log_to_console=False):
     mylogger = logging.getLogger()  # logger handler
-    mylogger.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-    fh = logging.FileHandler('cinemas_log_file.txt', mode='w')
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(formatter)
-    mylogger.addHandler(fh)
-    if copy_to_console:
+    mylogger.setLevel(logging.DEBUG)
+    if log_to_file:
+        fh = logging.FileHandler('cinemas_log_file.txt', mode='w')
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(formatter)
+        mylogger.addHandler(fh)
+    if log_to_console:
         ch = logging.StreamHandler()
         ch.setLevel(logging.DEBUG)
         ch.setFormatter(formatter)
         mylogger.addHandler(ch)
-    mylogger.disabled = True
     return mylogger
 
 
@@ -285,9 +270,7 @@ if __name__ == '__main__':
                     help="  create log file 'cinemas_log_file.txt'")
     args = ap.parse_args(sys.argv[1:])
 
-    LOGGING_ON = args.log
-    if LOGGING_ON:
-        logger = create_logger()  # initialize global logger handler
+    logger = create_logger(log_to_file=args.log)  # initialize global logger handler
 
     start_time = time.clock()
     proxies_list = load_good_proxy_list()
