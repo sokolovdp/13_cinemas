@@ -8,6 +8,8 @@ from operator import itemgetter
 import random
 import logging
 
+
+afisha_page = "https://www.afisha.ru/msk/schedule_cinema/"
 NPSB = '\xa0'  # special space character &npsb;
 user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
@@ -34,9 +36,6 @@ def load_good_proxy_list() -> "list":
     response = requests.get("http://www.freeproxy-list.ru/api/proxy?token=demo")
     if response.ok:
         return list(filter(good_proxy, response.text.split('\n')))
-    else:
-        logger.debug("can't load proxies, program aborted")
-        exit(1)
 
 
 def next_valid_proxy() -> "dict":
@@ -60,7 +59,7 @@ def update_proxies_list_if_needed():  # reload proxies list after 30 minutes
 
 
 def make_response(html=None, url=None, err=None):
-    return {'html': html, 'url': url, 'err': err}
+    return dict(html=html, url=url, err=err)
 
 
 def load_html(url: "str") -> "dict":
@@ -83,12 +82,11 @@ def load_html(url: "str") -> "dict":
 
 
 def fetch_afisha_page() -> "class 'bytes'":
-    page = load_html("https://www.afisha.ru/msk/schedule_cinema/")
+    page = load_html(afisha_page)
     if page['html']:
         return page['html']
     else:
-        print("can't load afisha page, error {}, program aborted".format(page['err']))
-        exit(2)
+        print("can't load afisha page, error {}".format(page['err']))
 
 
 def parse_afisha_list(raw_html: "class 'bytes'") -> "list":
@@ -199,7 +197,7 @@ def scrape_rating_votes_kp_movie_page(html_movie: "str") -> "tuple":
 def scrape_rating_votes_from_kp(title: "str", year: "int") -> "class 'bytes'":
     title_hex = "%" + "%".join("{:02x}".format(b) for b in bytearray(title.encode('utf-8'))).upper()
     url_find = "http://www.kinopoisk.ru/s/type/film/find/{}/m_act%5Byear%5D/{}".format(title_hex, year)
-    page = load_html(url_find)
+    page = load_html(url_find)   # TODO remove load from parsing
     if page['html']:
         if "/type/film/find/" in page['url']:  # kinopoisk is in the find page - list of many movies
             kp_rating, kp_votes = scrape_rating_votes_kp_find_page(page['html'])
@@ -218,7 +216,7 @@ def scrape_rating_votes_from_kp(title: "str", year: "int") -> "class 'bytes'":
 
 
 def fetch_movie_info(movie_title: "str", movie_url: "str") -> "tuple":
-    movie_page = load_html(movie_url)
+    movie_page = load_html(movie_url)  # TODO remove load from parsing
     if movie_page['html']:
         soup = BeautifulSoup(movie_page['html'], "lxml")
         votes = scrape_movie_votes(soup)
@@ -286,6 +284,7 @@ if __name__ == '__main__':
 
     start_time = time.clock()
     proxies_list = load_good_proxy_list()
+    assert proxies_list is not None, "can't load proxy list"
     print("loaded {} good proxies".format(len(proxies_list)))
 
     main(args.stars, args.n)
