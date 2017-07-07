@@ -7,25 +7,32 @@ import re
 from operator import itemgetter
 import random
 import logging
+from collections import namedtuple
 
 afisha_page = "https://www.afisha.ru/msk/schedule_cinema/"
-NPSB = '\xa0'  # special space character &npsb;
 user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
-MAX_RESPONSE_TIMEOUT = 7  # max response timeout to get answer from site
+MAX_RESPONSE_TIMEOUT = 9  # max response timeout to get answer from site
 TIME_UPDATE_PROXY = 30 * 60 - 1  # 30 minutes - 1 sec
+MAX_TIMEOUT_RETRIES = 5
+NPSB = '\xa0'  # special space character &npsb;
+
 start_time = 0  # start time to count 30 minutes of proxies validity
-next_proxy = 0
+
 ERROR = -1
 NO_DATA = 0
 
 proxies_list = list()  # list of valid proxies to use for parsing
+next_proxy = 0
+Rating = namedtuple('movie_rating', ['rating', 'votes'])
+Movie_info = namedtuple('movie_info', ['title', 'year', 'af_rating', 'cinemas', 'kp_rating'])
 
 
-def good_proxy(proxy_ip: "str") -> "bool":
+def is_proxy_good(proxy_ip: "str") -> "bool":
     try:
         proxy_addr = "http://" + proxy_ip
-        requests.get("http://www.example.com", proxies={"http": proxy_addr, "https": proxy_addr}, timeout=1)
+        requests.get(afisha_page, proxies={"http": proxy_addr, "https": proxy_addr},
+                     timeout=MAX_RESPONSE_TIMEOUT)
     except OSError:
         return False
     except requests.exceptions.Timeout:
@@ -35,9 +42,14 @@ def good_proxy(proxy_ip: "str") -> "bool":
 
 
 def load_good_proxy_list() -> "list":
+    global next_proxy
+
     response = requests.get("http://www.freeproxy-list.ru/api/proxy?token=demo")
     if response.ok:
-        return list(filter(good_proxy, response.text.split('\n')))
+        good_proxies = [proxy for proxy in response.text.split('\n') if is_proxy_good(proxy)]
+        logger.error("info!!!! loaded {} good proxies".format(len(good_proxies)))
+        next_proxy = 0
+        return good_proxies
 
 
 def next_valid_proxy() -> "dict":
@@ -60,48 +72,66 @@ def update_proxies_list_if_needed():  # reload proxies list after 30 minutes
         start_time = time.clock()
 
 
+def remove_from_proxies_list(ip: "str"):
+    global proxies_list
+    global next_proxy
+
+    ip = ip.replace("http://", '')
+    proxies_list = [proxy for proxy in proxies_list if proxy != ip]
+    next_proxy = 0
+    if len(proxies_list) == 0:
+        proxies_list = load_good_proxy_list()
+    time.sleep(2)
+
+
 def make_response(html=None, url=None, err=None):
     return dict(html=html, url=url, err=err)
 
 
 def load_html(url: "str") -> "dict":
     update_proxies_list_if_needed()
+    timeout_retries = 0
     while True:
         try:
-            response = requests.get(url, headers=user_agent, timeout=MAX_RESPONSE_TIMEOUT, proxies=next_valid_proxy())
-            if response.ok:
+            proxy = next_valid_proxy()
+            response = requests.get(url, headers=user_agent, timeout=MAX_RESPONSE_TIMEOUT, proxies=proxy)
+            if response.status_code == 200:
                 time.sleep(random.random())  # wait random period between 0 - 1 sec
                 return make_response(html=response.text, url=response.url)
             else:
-                logger.debug('load_html - response error')
+                logger.error('load_html: url={} response error={}'.format(url, response.status_code))
                 return make_response(err=str(response.status_code))
         except requests.exceptions.Timeout:
-            logger.debug('load_html - timeout error')
-            return make_response(err="load_html timeout error")
-        except OSError:  # Tunnel connection failed: 403 Forbidden
-            logger.debug('load_html - OSError: Tunnel connection failed: 403 Forbidden')
+            logger.error('load_html: url={} timeout={} secs'.format(url, MAX_RESPONSE_TIMEOUT))
+            timeout_retries += 1
+            if timeout_retries >= MAX_TIMEOUT_RETRIES:
+                return make_response(err="load_html timeout error")
+            continue
+        except OSError as ose:  # Tunnel connection failed: 403 Forbidden
+            remove_from_proxies_list(proxy['http'])
+            logger.error("load_html: OSError! url={} proxy={} err='{}'".format(url, proxy['http'], ose))
             continue
 
 
-def fetch_afisha_page() -> "class 'bytes'":
+def fetch_af_page() -> "class 'bytes'":
     page = load_html(afisha_page)
     if page['html']:
         return page['html']
     else:
-        print("can't load afisha page, error {}".format(page['err']))
+        logger.error("fetch_af_page: can't load afisha page, error {}".format(page['err']))
 
 
-def parse_afisha_list(raw_html: "class 'bytes'") -> "list":
+def parse_af_list(raw_html: "class 'bytes'") -> "list":
     assert raw_html
 
     soup = BeautifulSoup(raw_html, "lxml")
     movies = soup.find_all('div', attrs={'class': 'm-disp-table'})
-    movies_info = [(movie.find('h3', attrs={'class': 'usetags'}).text, movie.find('a').attrs['href'])
-                   for movie in movies]
-    return movies_info
+    movies_titles = [(movie.find('h3', attrs={'class': 'usetags'}).text, movie.find('a').attrs['href'])
+                     for movie in movies]
+    return movies_titles
 
 
-def scrape_afisha_movie_rating(soup: "class 'bs4.BeautifulSoup'") -> "float":
+def scrape_af_movie_rating(soup: "class 'bs4.BeautifulSoup'") -> "float":
     assert soup
 
     try:
@@ -113,11 +143,11 @@ def scrape_afisha_movie_rating(soup: "class 'bs4.BeautifulSoup'") -> "float":
         rating = float(rating_text.replace(',', '.'))
     except ValueError:
         rating = NO_DATA
-        logger.debug("get rating value error: '{}'".format(rating_text))
+        logger.error("scrape_af_movie_rating: get rating value error: '{}'".format(rating_text))
     return rating
 
 
-def scrape_afisha_movie_votes(soup: "class 'bs4.BeautifulSoup'") -> "int":
+def scrape_af_movie_votes(soup: "class 'bs4.BeautifulSoup'") -> "int":
     assert soup
 
     try:
@@ -129,11 +159,11 @@ def scrape_afisha_movie_votes(soup: "class 'bs4.BeautifulSoup'") -> "int":
         votes = int(votes_text)
     except ValueError:
         votes = NO_DATA
-        logger.debug("get votes value error: '{}'".format(votes_text))
+        logger.error("scrape_af_movie_votes: get votes value error: '{}'".format(votes_text))
     return votes
 
 
-def scrape_afisha_movie_year(soup: "class 'bs4.BeautifulSoup'") -> "int":
+def scrape_af_movie_year(soup: "class 'bs4.BeautifulSoup'") -> "int":
     assert soup
 
     year_text = soup.find('span', attrs={'class': 'creation'}).text.strip()
@@ -145,17 +175,17 @@ def scrape_afisha_movie_year(soup: "class 'bs4.BeautifulSoup'") -> "int":
         year = int(year_text)
     except ValueError:
         year = NO_DATA
-        logger.debug("get year value error: '{}'".format(year_text))
+        logger.error("scrape_af_movie_year: get year value error: '{}'".format(year_text))
     return year
 
 
-def scrape_afisha_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
+def scrape_af_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
     assert soup
 
     try:
         timetable_url = soup.find('a', attrs={'id': 'ctl00_CenterPlaceHolder_ucTab_rpTabs_ctl02_hlItem'}).attrs['href']
     except AttributeError:
-        logger.debug("attr 'href' error in scrape_afisha_cinemas()")
+        logger.error("scrape_af_cinemas: attr 'href' error in scrape_af_cinemas()")
         return NO_DATA
     else:
         movie_time_page = load_html("https://www.afisha.ru" + timetable_url)
@@ -164,11 +194,12 @@ def scrape_afisha_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
             cinemas_list = soup2.find_all('td', attrs={'class': "b-td-item"})
             return len(cinemas_list)
         else:
-            logger.debug("can't load time page {} error {}".format(movie_time_page['url'], movie_time_page['err']))
+            logger.error("scrape_af_cinemas: can't load time page {} error {}".format(movie_time_page['url'],
+                                                                                      movie_time_page['err']))
             return NO_DATA
 
 
-def scrape_rating_votes_kp_result_page(html_result: "str") -> "tuple":
+def scrape_rating_votes_kp_result_page(html_result: "str") -> "Rating":
     assert html_result
 
     soup = BeautifulSoup(html_result, "lxml")
@@ -178,91 +209,98 @@ def scrape_rating_votes_kp_result_page(html_result: "str") -> "tuple":
         try:
             rating_text = rating_block.find('div', attrs={'class': class_list}).attrs['title'].replace(NPSB, '')
         except AttributeError:  # rating is hidden (not enough votes)
-            return NO_DATA, NO_DATA
+            return Rating(NO_DATA, NO_DATA)
         else:
             rating = re.search(r"(\d*\.\d+|\d+)", rating_text).group(1)
             votes = re.search(r"\((\d+)\)", rating_text).group(1)
-            return float(rating), int(votes)
+            return Rating(float(rating), int(votes))
     else:
-        logger.debug("can't find class 'element most_wanted' at scrape_rating_votes_from_kinopoisk_find_page")
-        return ERROR, ERROR
+        logger.error("scrape_rating_votes_kp_result_page: no class 'element most_wanted' in page")
+        return Rating(ERROR, ERROR)
 
 
-def scrape_rating_votes_kp_movie_page(html_movie: "str") -> "tuple":
+def scrape_rating_votes_kp_movie_page(html_movie: "str") -> "Rating":
     assert html_movie
 
     soup = BeautifulSoup(html_movie, "lxml")
     rating_block = soup.find('div', attrs={'id': 'block_rating'})
     if not rating_block:
-        logger.debug("error for div with id='block_rating' at scrape_rating_votes_from_kinopoisk_movie_page")
-        return ERROR, ERROR
+        logger.error("scrape_rating_votes_kp_movie_page: no div with id='block_rating'")
+        return Rating(ERROR, ERROR)
     else:
         try:
             rating = rating_block.find('span', attrs={'class': 'rating_ball'}).text
             votes = rating_block.find('span', attrs={'class': 'ratingCount'}).text.replace(NPSB, '')
         except AttributeError:
-            logger.debug("attr error for span with class='rating...' at scrape_rating_votes_from_kinopoisk_movie_page")
-            return ERROR, ERROR
+            logger.error("scrape_rating_votes_from_kinopoisk_movie_page: no attrs for span with class='rating...'")
+            return Rating(ERROR, ERROR)
         else:
-            return float(rating), int(votes)
+            return Rating(float(rating), int(votes))
 
 
-def convert_string_to_ascii_hex(string: "str") -> "str":
-    return "%" + "%".join("{:02x}".format(b) for b in bytearray(string.encode('utf-8'))).upper()
+def convert_title_to_ascii_hex(string: "str") -> "str":
+    line = "%" + "%".join("{:02x}".format(b) for b in bytearray(string.encode('utf-8'))).upper()
+    return line.replace("%20", "+")
 
 
 def make_kp_find_url(movie_title: "str", year: int):
     find_url_1 = "http://www.kinopoisk.ru/s/type/film/find/"
     find_url_2 = "/m_act%5Byear%5D/"
-    title_hex = convert_string_to_ascii_hex(movie_title)
+    title_hex = convert_title_to_ascii_hex(movie_title)
     return "{0}{1}{2}{3}".format(find_url_1, title_hex, find_url_2, year)
 
 
-def scrape_rating_votes_from_kp(page: "str") -> "tuple":
+def scrape_rating_votes_from_kp(page: "str") -> "Rating":
     assert page
 
     if "/type/film/find/" in page:  # kinopoisk is in the search results page - list of many movies
-        kp_rating, kp_votes = scrape_rating_votes_kp_result_page(page)
+        kp_rating = scrape_rating_votes_kp_result_page(page)
     elif "www.kinopoisk.ru/film/" in page:  # kinopoisk is in the page of the movie
-        kp_rating, kp_votes = scrape_rating_votes_kp_movie_page(page)
+        kp_rating = scrape_rating_votes_kp_movie_page(page)
     else:
-        logger.debug("can't get rating and votes from invalid kinopoisk movie url {}".format(page))
-        kp_rating, kp_votes = NO_DATA, NO_DATA
-    if kp_rating == ERROR:  # check if there were some errors
-        logger.debug("rating and votes parsing problem in kinopoisk.ru ")
-        kp_rating, kp_votes = NO_DATA, NO_DATA
-    return kp_rating, kp_votes
+        logger.error("scrape_rating_votes_from_kp: can't get rating and votes from url '{}'".format(page.strip()))
+        kp_rating = Rating(NO_DATA, NO_DATA)
+    if kp_rating.votes == ERROR:  # check if there were some errors
+        logger.error("scrape_rating_votes_from_kp: error, rating and votes set to NO_DATA")
+        kp_rating = Rating(NO_DATA, NO_DATA)
+    return kp_rating
 
 
-def fetch_movie_info(movie_title: "str", movie_page: "str") -> "tuple":
-    assert movie_page
+def fetch_movie_info(movie_title: "str", af_movie_page: "str") -> "Movie_info":
+    assert af_movie_page
     assert movie_title
 
-    soup = BeautifulSoup(movie_page, "lxml")
-    votes = scrape_afisha_movie_votes(soup)
-    rating = scrape_afisha_movie_rating(soup)
-    year = scrape_afisha_movie_year(soup)
-    cinemas = scrape_afisha_cinemas(soup)
+    soup = BeautifulSoup(af_movie_page, "lxml")
+    af_rating = Rating(scrape_af_movie_rating(soup), scrape_af_movie_votes(soup))
+    year = scrape_af_movie_year(soup)
+    cinemas = scrape_af_cinemas(soup)
     # scrape movie info from kinopoisk.ru
     kp_url_find = make_kp_find_url(movie_title, year)
     kp_page = load_html(kp_url_find)
     if kp_page['html']:
-        kp_rating, kp_votes = scrape_rating_votes_from_kp(kp_page['html'])
+        kp_rating = scrape_rating_votes_from_kp(kp_page['html'])
     else:
-        logger.debug("can't load kinopoisk page {} error {}".format(kp_page['url'], kp_page['err']))
-        kp_rating, kp_votes = NO_DATA, NO_DATA
-    return year, rating, votes, cinemas, kp_rating, kp_votes
+        logger.error("fetch_movie_info: can't load kinopoisk page {} error {}".format(kp_page['url'], kp_page['err']))
+        kp_rating = Rating(NO_DATA, NO_DATA)
+    return Movie_info(movie_title, year, af_rating, cinemas, kp_rating)
 
 
 def output_movies_to_console(movies_list: "list"):
     print("{0} top movies with best ratings are:".format(len(movies_list)))
     for i, movie_info in enumerate(movies_list):
         # title, year, afisha_rating, afisha_votes, cinemas, kp_rating, kp_votes = movie_info
-        print(" {0:2d}. {1}({2}) has ratings {3}({4}) and {6:.1f}({7}) in {5} cinemas".format(i + 1, *movie_info))
+        print(" {0:2d}. {1}({2}) ratings {3}({4}) and {6:.1f}({7}) in {5} cinemas".format(i + 1, movie_info.title,
+                                                                                          movie_info.year,
+                                                                                          movie_info.af_rating.rating,
+                                                                                          movie_info.af_rating.votes,
+                                                                                          movie_info.cinemas,
+                                                                                          movie_info.kp_rating.rating,
+                                                                                          movie_info.kp_rating.votes
+                                                                                          ))
 
 
 def main(min_rating: "float", how_many_movies: "int"):
-    list_of_movies_title_and_url = parse_afisha_list(fetch_afisha_page())
+    list_of_movies_title_and_url = parse_af_list(fetch_af_page())
     print("total {} movies are in cinemas today".format(len(list_of_movies_title_and_url)))
     top_movies_list = list()
     for title, url in list_of_movies_title_and_url:
@@ -270,12 +308,10 @@ def main(min_rating: "float", how_many_movies: "int"):
         if movie_page['html']:
             movie_info = fetch_movie_info(title, movie_page['html'])
             if movie_info:
-                year, afisha_rating, afisha_votes, cinemas, kp_rating, kp_votes = movie_info
-                if afisha_rating >= min_rating:
-                    top_movies_list.append((title, year, afisha_rating, afisha_votes, cinemas, kp_rating, kp_votes))
+                if movie_info.af_rating.rating >= min_rating:
+                    top_movies_list.append(movie_info)
         else:
-            logger.debug(
-                "can't load movie page {} from afisha site, error {}".format(movie_page['url'], movie_page['err']))
+            logger.error("main: no afisha movie page {}, error {}".format(movie_page['url'], movie_page['err']))
     if how_many_movies <= len(top_movies_list):
         best_movies = sorted(top_movies_list, key=itemgetter(2), reverse=True)[:how_many_movies]
     else:
@@ -286,15 +322,15 @@ def main(min_rating: "float", how_many_movies: "int"):
 def create_logger(log_to_file=False, log_to_console=False):
     log = logging.getLogger()
     formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-    log.setLevel(logging.DEBUG)
+    log.setLevel(logging.ERROR)
     if log_to_file:
         fh = logging.FileHandler('cinemas_log_file.txt', mode='w')
-        fh.setLevel(logging.DEBUG)
+        fh.setLevel(logging.ERROR)
         fh.setFormatter(formatter)
         log.addHandler(fh)
     if log_to_console:
         ch = logging.StreamHandler()
-        ch.setLevel(logging.DEBUG)
+        ch.setLevel(logging.ERROR)
         ch.setFormatter(formatter)
         log.addHandler(ch)
     return log
@@ -315,7 +351,5 @@ if __name__ == '__main__':
     start_time = time.clock()
 
     proxies_list = load_good_proxy_list()
-    assert proxies_list
-    print("loaded {} good proxies".format(len(proxies_list)))
-
-    main(args.stars, args.n)
+    if proxies_list:
+        main(args.stars, args.n)

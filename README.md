@@ -11,16 +11,15 @@ optional arguments:
 ```
 # Sample output
 ```bazaar
-loaded 12 good proxies
-total 75 movies are in cinemas today
+total 77 movies are in cinemas today
 7 top movies with best ratings are:
-  1. Мульт в кино. Выпуск №55(2017) has ratings 5.0(3) and 0.0(0) in 32 cinemas
-  2. Я умею вязать(2016) has ratings 5.0(1) and 0.0(0) in 5 cinemas
-  3. Он и она(2017) has ratings 4.5(47) and 7.7(582) in 19 cinemas
-  4. Время первых(2017) has ratings 4.5(525) and 7.5(28913) in 2 cinemas
-  5. Тачки-3(2017) has ratings 4.4(96) and 0.0(0) in 136 cinemas
-  6. Идеальные незнакомцы(2016) has ratings 4.4(260) and 7.5(34054) in 1 cinemas
-  7. Трио в перьях(2017) has ratings 4.4(196) and 0.0(0) in 4 cinemas
+  1. Время первых(2017) ratings 4.5(529) and 7.5(29288) in 2 cinemas
+  2. Идеальные незнакомцы(2016) ratings 4.4(264) and 7.5(34415) in 1 cinemas
+  3. Сказ о Петре и Февронии(2017) ratings 4.4(81) and 0.0(0) in 138 cinemas
+  4. Он и она(2017) ratings 4.4(55) and 7.7(686) in 13 cinemas
+  5. Ханна: Нерассказанная история буддизма(2014) ratings 4.4(5) and 0.0(0) in 1 cinemas
+  6. Криминальное чтиво. Криминальное чтиво(1994) ratings 4.3(19989) and 8.6(280844) in 1 cinemas
+  7. Великая красота(2013) ratings 4.3(735) and 7.5(17268) in 1 cinemas
 ```
 # Project Goals
 The code is written for educational purposes. Training course for web-developers - [DEVMAN.org](https://devman.org)
