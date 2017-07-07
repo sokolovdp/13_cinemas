@@ -8,24 +8,26 @@ from operator import itemgetter
 import random
 import logging
 from collections import namedtuple
+from datetime import datetime
 
+# Global constants
 afisha_page = "https://www.afisha.ru/msk/schedule_cinema/"
+proxy_url = "http://www.freeproxy-list.ru/api/proxy?token=demo"
 user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
 MAX_RESPONSE_TIMEOUT = 9  # max response timeout to get answer from site
 TIME_UPDATE_PROXY = 30 * 60 - 1  # 30 minutes - 1 sec
 MAX_TIMEOUT_RETRIES = 5
 NPSB = '\xa0'  # special space character &npsb;
-
-start_time = 0  # start time to count 30 minutes of proxies validity
-
 ERROR = -1
 NO_DATA = 0
-
-proxies_list = list()  # list of valid proxies to use for parsing
-next_proxy = 0
+# Global variables
 Rating = namedtuple('movie_rating', ['rating', 'votes'])
 Movie_info = namedtuple('movie_info', ['title', 'year', 'af_rating', 'cinemas', 'kp_rating'])
+Proxies_list = namedtuple('proxies_list', ['proxies', 'next_proxy'])  # list of valid proxies to use for parsing
+
+proxies_list = Proxies_list(list(), 0)
+start_time = 0  # start time to count 30 minutes of proxies validity
 
 
 def is_proxy_good(proxy_ip: "str") -> "bool":
@@ -41,25 +43,24 @@ def is_proxy_good(proxy_ip: "str") -> "bool":
         return True
 
 
-def load_good_proxy_list() -> "list":
-    global next_proxy
+def load_good_proxy_list():
+    global proxies_list
 
-    response = requests.get("http://www.freeproxy-list.ru/api/proxy?token=demo")
+    response = requests.get(proxy_url)
     if response.ok:
         good_proxies = [proxy for proxy in response.text.split('\n') if is_proxy_good(proxy)]
         logger.error("info!!!! loaded {} good proxies".format(len(good_proxies)))
-        next_proxy = 0
-        return good_proxies
+        proxies_list.next_proxy = 0
+        proxies_list.proxies = good_proxies
 
 
 def next_valid_proxy() -> "dict":
     global proxies_list
-    global next_proxy
 
-    proxy_addr = "http://" + proxies_list[next_proxy]
-    next_proxy += 1
-    if next_proxy >= len(proxies_list):
-        next_proxy = 0
+    proxy_addr = "http://" + proxies_list[proxies_list.next_proxy]
+    proxies_list.next_proxy += 1
+    if proxies_list.next_proxy >= len(proxies_list):
+        proxies_list.next_proxy = 0
     return {"http": proxy_addr, "https": proxy_addr}
 
 
@@ -68,19 +69,18 @@ def update_proxies_list_if_needed():  # reload proxies list after 30 minutes
     global proxies_list
 
     if time.clock() - start_time >= TIME_UPDATE_PROXY:
-        proxies_list = load_good_proxy_list()
+        load_good_proxy_list()
         start_time = time.clock()
 
 
 def remove_from_proxies_list(ip: "str"):
     global proxies_list
-    global next_proxy
 
     ip = ip.replace("http://", '')
-    proxies_list = [proxy for proxy in proxies_list if proxy != ip]
-    next_proxy = 0
-    if len(proxies_list) == 0:
-        proxies_list = load_good_proxy_list()
+    proxies_list.proxies = [proxy for proxy in proxies_list.proxies if proxy != ip]
+    proxies_list.next_proxy = 0
+    if len(proxies_list.proxies) == 0:
+        load_good_proxy_list()
     time.sleep(2)
 
 
@@ -285,10 +285,10 @@ def fetch_movie_info(movie_title: "str", af_movie_page: "str") -> "Movie_info":
     return Movie_info(movie_title, year, af_rating, cinemas, kp_rating)
 
 
-def output_movies_to_console(movies_list: "list"):
-    print("{0} top movies with best ratings are:".format(len(movies_list)))
+def output_movies_to_console(movies_list: "list", all_movies: "int"):
+    print("on {} {} top movies from {} with best ratings are:".format(datetime.today().strftime('%Y-%m-%d'),
+                                                                      len(movies_list), all_movies))
     for i, movie_info in enumerate(movies_list):
-        # title, year, afisha_rating, afisha_votes, cinemas, kp_rating, kp_votes = movie_info
         print(" {0:2d}. {1}({2}) ratings {3}({4}) and {6:.1f}({7}) in {5} cinemas".format(i + 1, movie_info.title,
                                                                                           movie_info.year,
                                                                                           movie_info.af_rating.rating,
@@ -301,7 +301,7 @@ def output_movies_to_console(movies_list: "list"):
 
 def main(min_rating: "float", how_many_movies: "int"):
     list_of_movies_title_and_url = parse_af_list(fetch_af_page())
-    print("total {} movies are in cinemas today".format(len(list_of_movies_title_and_url)))
+    logger.error("info!!! {} movies loaded from afisha.ru".format(len(list_of_movies_title_and_url)))
     top_movies_list = list()
     for title, url in list_of_movies_title_and_url:
         movie_page = load_html(url)
@@ -316,7 +316,7 @@ def main(min_rating: "float", how_many_movies: "int"):
         best_movies = sorted(top_movies_list, key=itemgetter(2), reverse=True)[:how_many_movies]
     else:
         best_movies = sorted(top_movies_list, key=itemgetter(2), reverse=True)
-    output_movies_to_console(best_movies)
+    output_movies_to_console(best_movies, len(list_of_movies_title_and_url))
 
 
 def create_logger(log_to_file=False, log_to_console=False):
@@ -345,11 +345,8 @@ if __name__ == '__main__':
     ap.add_argument("--verbose", dest="verbose", action="store_true", default=False,
                     help="  output debug information to console")
     args = ap.parse_args(sys.argv[1:])
-
     logger = create_logger(log_to_file=args.log, log_to_console=args.verbose)  # initialize global logger handler
-
     start_time = time.clock()
-
-    proxies_list = load_good_proxy_list()
+    load_good_proxy_list()
     if proxies_list:
         main(args.stars, args.n)
