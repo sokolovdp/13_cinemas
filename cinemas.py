@@ -15,58 +15,58 @@ afisha_page = "https://www.afisha.ru/msk/schedule_cinema/"
 proxy_url = "http://www.freeproxy-list.ru/api/proxy?token=demo"
 user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
-MAX_RESPONSE_TIMEOUT = 9  # max response timeout to get answer from site
+MAX_RESPONSE_TIMEOUT = 3  # max response timeout to get answer from site
 TIME_UPDATE_PROXY = 30 * 60 - 1  # 30 minutes - 1 sec
-MAX_TIMEOUT_RETRIES = 5
+MAX_TIMEOUT_RETRIES = 3
+MAX_403_RETRIES = 3
 NPSB = '\xa0'  # special space character &npsb;
 ERROR = -1
 NO_DATA = 0
 # Global variables
 Rating = namedtuple('movie_rating', ['rating', 'votes'])
 Movie_info = namedtuple('movie_info', ['title', 'year', 'af_rating', 'cinemas', 'kp_rating'])
-Proxies_list = namedtuple('proxies_list', ['proxies', 'next_proxy'])  # list of valid proxies to use for parsing
-
-proxies_list = Proxies_list(list(), 0)
-start_time = 0  # start time to count 30 minutes of proxies validity
+proxies_list = dict(proxies=list(), next=0)
+start_time = time.clock()  # start time to count 30 minutes of proxies validity
 
 
 def is_proxy_good(proxy_ip: "str") -> "bool":
+    result = True
     try:
-        proxy_addr = "http://" + proxy_ip
-        requests.get(afisha_page, proxies={"http": proxy_addr, "https": proxy_addr},
-                     timeout=MAX_RESPONSE_TIMEOUT)
-    except OSError:
-        return False
-    except requests.exceptions.Timeout:
-        return False
+        proxy = "http://" + proxy_ip
+        response = requests.get(afisha_page, proxies=dict(http=proxy, https=proxy), timeout=MAX_RESPONSE_TIMEOUT)
+    except (OSError, requests.exceptions.Timeout):
+        result = False
     else:
-        return True
+        if not response.ok:
+            result = False
+    return result
 
 
 def load_good_proxy_list():
     global proxies_list
 
-    response = requests.get(proxy_url)
+    response = requests.get(proxy_url, headers=user_agent, timeout=MAX_RESPONSE_TIMEOUT)
     if response.ok:
         good_proxies = [proxy for proxy in response.text.split('\n') if is_proxy_good(proxy)]
-        logger.error("info!!!! loaded {} good proxies".format(len(good_proxies)))
-        proxies_list.next_proxy = 0
-        proxies_list.proxies = good_proxies
+        logger.error("info!!! load_good_proxy_list: loaded only {} good proxies".format(len(good_proxies)))
+        proxies_list['next'] = 0
+        proxies_list['proxies'] = good_proxies
+    else:
+        logger.error("load_good_proxy_list: response.status_code={}".format(response.status_code))
 
 
 def next_valid_proxy() -> "dict":
     global proxies_list
 
-    proxy_addr = "http://" + proxies_list[proxies_list.next_proxy]
-    proxies_list.next_proxy += 1
-    if proxies_list.next_proxy >= len(proxies_list):
-        proxies_list.next_proxy = 0
-    return {"http": proxy_addr, "https": proxy_addr}
+    proxy_addr = "http://" + proxies_list['proxies'][proxies_list['next']]
+    proxies_list['next'] += 1
+    if proxies_list['next'] >= len(proxies_list['proxies']):
+        proxies_list['next'] = 0
+    return dict(http=proxy_addr, https=proxy_addr)
 
 
 def update_proxies_list_if_needed():  # reload proxies list after 30 minutes
     global start_time
-    global proxies_list
 
     if time.clock() - start_time >= TIME_UPDATE_PROXY:
         load_good_proxy_list()
@@ -77,11 +77,10 @@ def remove_from_proxies_list(ip: "str"):
     global proxies_list
 
     ip = ip.replace("http://", '')
-    proxies_list.proxies = [proxy for proxy in proxies_list.proxies if proxy != ip]
-    proxies_list.next_proxy = 0
-    if len(proxies_list.proxies) == 0:
+    proxies_list['proxies'] = [proxy for proxy in proxies_list['proxies'] if proxy != ip]
+    proxies_list['next'] = 0
+    if len(proxies_list['proxies']) == 0:
         load_good_proxy_list()
-    time.sleep(2)
 
 
 def make_response(html=None, url=None, err=None):
@@ -91,6 +90,7 @@ def make_response(html=None, url=None, err=None):
 def load_html(url: "str") -> "dict":
     update_proxies_list_if_needed()
     timeout_retries = 0
+    retries_403 = 0
     while True:
         try:
             proxy = next_valid_proxy()
@@ -98,13 +98,18 @@ def load_html(url: "str") -> "dict":
             if response.status_code == 200:
                 time.sleep(random.random())  # wait random period between 0 - 1 sec
                 return make_response(html=response.text, url=response.url)
+            elif response.status_code == 403:
+                retries_403 += 1
+                if timeout_retries >= MAX_403_RETRIES:
+                    return make_response(err="load_html: url={} retries={} error 403".format(url, retries_403))
+                continue
             else:
                 logger.error('load_html: url={} response error={}'.format(url, response.status_code))
                 return make_response(err=str(response.status_code))
         except requests.exceptions.Timeout:
-            logger.error('load_html: url={} timeout={} secs'.format(url, MAX_RESPONSE_TIMEOUT))
             timeout_retries += 1
             if timeout_retries >= MAX_TIMEOUT_RETRIES:
+                logger.error('load_html: url={} timeout_retries={}'.format(url, timeout_retries))
                 return make_response(err="load_html timeout error")
             continue
         except OSError as ose:  # Tunnel connection failed: 403 Forbidden
@@ -339,14 +344,13 @@ def create_logger(log_to_file=False, log_to_console=False):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description="finds top N movies with star rating greater STARS")
     ap.add_argument("--n", dest="n", action="store", type=int, default=7, help="  number of movies")
-    ap.add_argument("--stars", dest="stars", action="store", type=float, default=3.1, help="  stars rating")
+    ap.add_argument("--stars", dest="stars", action="store", type=float, default=3.5, help="  stars rating")
     ap.add_argument("--log", dest="log", action="store_true", default=False,
                     help="  create log file 'cinemas_log_file.txt'")
     ap.add_argument("--verbose", dest="verbose", action="store_true", default=False,
                     help="  output debug information to console")
     args = ap.parse_args(sys.argv[1:])
     logger = create_logger(log_to_file=args.log, log_to_console=args.verbose)  # initialize global logger handler
-    start_time = time.clock()
     load_good_proxy_list()
     if proxies_list:
         main(args.stars, args.n)
