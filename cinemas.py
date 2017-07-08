@@ -16,7 +16,6 @@ proxy_url = "http://www.freeproxy-list.ru/api/proxy?token=demo"
 user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
 MAX_RESPONSE_TIMEOUT = 3  # max response timeout to get answer from site
-TIME_UPDATE_PROXY = 30 * 60 - 1  # 30 minutes - 1 sec
 MAX_TIMEOUT_RETRIES = 3
 MAX_4XX_RETRIES = 3
 NPSB = '\xa0'  # special space character &npsb;
@@ -25,7 +24,6 @@ NO_DATA = 0
 Rating = namedtuple('movie_rating', ['rating', 'votes'])
 Movie_info = namedtuple('movie_info', ['title', 'year', 'af_rating', 'cinemas', 'kp_rating'])
 proxies_list = dict(proxies=list(), next=0)
-start_time = time.clock()  # start time to count 30 minutes of proxies validity
 
 
 def is_proxy_good(proxy_ip: "str") -> "bool":
@@ -64,14 +62,6 @@ def next_valid_proxy() -> "dict":
     return dict(http=proxy_addr, https=proxy_addr)
 
 
-def update_proxies_list_if_needed():  # reload proxies list after 30 minutes
-    global start_time
-
-    if time.clock() - start_time >= TIME_UPDATE_PROXY:
-        load_good_proxy_list()
-        start_time = time.clock()
-
-
 def remove_from_proxies_list(ip: "str"):
     global proxies_list
 
@@ -87,7 +77,6 @@ def make_response(html=None, url=None, err=None):
 
 
 def load_html(url: "str") -> "dict":
-    update_proxies_list_if_needed()
     timeout_retries = 0
     retries_4xx = 0
     while True:
@@ -122,7 +111,7 @@ def fetch_af_page() -> "class 'bytes'":
     if page['html']:
         return page['html']
     else:
-        logger.error("fetch_af_page: can't load afisha page, error {}".format(page['err']))
+        logger.error("fetch_af_page: err load afisha page, error {}".format(page['err']))
 
 
 def parse_af_list(raw_html: "class 'bytes'") -> "list":
@@ -198,8 +187,8 @@ def scrape_af_cinemas(soup: "class 'bs4.BeautifulSoup'") -> "int":
             cinemas_list = soup2.find_all('td', attrs={'class': "b-td-item"})
             return len(cinemas_list)
         else:
-            logger.error("scrape_af_cinemas: can't load time page {} error {}".format(movie_time_page['url'],
-                                                                                      movie_time_page['err']))
+            logger.error("scrape_af_cinemas: err load time page {} error {}".format(movie_time_page['url'],
+                                                                                    movie_time_page['err']))
             return NO_DATA
 
 
@@ -281,9 +270,9 @@ def fetch_movie_info(movie_title: "str", af_movie_page: "str") -> "Movie_info":
     if kp_page['html']:
         kp_rating = scrape_rating_votes_from_kp(kp_page['html'])
         if kp_rating.votes == NO_DATA:
-            logger.error("fetch_movie_info: can't scrape votes and rating from url {}".format(kp_page['url']))
+            logger.error("fetch_movie_info: err scrape votes and rating from kp url {}".format(kp_page['url']))
     else:
-        logger.error("fetch_movie_info: can't load kinopoisk url {} error {}".format(kp_page['url'], kp_page['err']))
+        logger.error("fetch_movie_info: err load kinopoisk url {} error {}".format(kp_page['url'], kp_page['err']))
         kp_rating = Rating(NO_DATA, NO_DATA)
     return Movie_info(movie_title, year, af_rating, cinemas, kp_rating)
 
