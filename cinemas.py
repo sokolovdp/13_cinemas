@@ -91,8 +91,6 @@ def load_html(url: "str") -> "dict":
             if response.status_code == 200:
                 result = make_response(html=response.text, url=response.url)
                 break
-            elif response.status_code == 403 or response.status_code == 400:
-                error_message = "load_html: url={} error 403 or 400".format(url)
             else:
                 error_message = 'load_html: url={} response error={}'.format(url, response.status_code)
     else:
