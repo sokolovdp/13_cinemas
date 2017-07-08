@@ -18,7 +18,7 @@ user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebK
 MAX_RESPONSE_TIMEOUT = 3  # max response timeout to get answer from site
 TIME_UPDATE_PROXY = 30 * 60 - 1  # 30 minutes - 1 sec
 MAX_TIMEOUT_RETRIES = 3
-MAX_403_RETRIES = 3
+MAX_4XX_RETRIES = 3
 NPSB = '\xa0'  # special space character &npsb;
 NO_DATA = 0
 # Global variables
@@ -89,7 +89,7 @@ def make_response(html=None, url=None, err=None):
 def load_html(url: "str") -> "dict":
     update_proxies_list_if_needed()
     timeout_retries = 0
-    retries_403 = 0
+    retries_4xx = 0
     while True:
         try:
             proxy = next_valid_proxy()
@@ -97,10 +97,10 @@ def load_html(url: "str") -> "dict":
             if response.status_code == 200:
                 time.sleep(random.random())  # wait random period between 0 - 1 sec
                 return make_response(html=response.text, url=response.url)
-            elif response.status_code == 403:
-                retries_403 += 1
-                if timeout_retries >= MAX_403_RETRIES:
-                    return make_response(err="load_html: url={} retries={} error 403".format(url, retries_403))
+            elif response.status_code == 403 or response.status_code == 400:
+                retries_4xx += 1
+                if timeout_retries >= MAX_4XX_RETRIES:
+                    return make_response(err="load_html: url={} retries={} error 403".format(url, retries_4xx))
                 continue
             else:
                 logger.error('load_html: url={} response error={}'.format(url, response.status_code))
