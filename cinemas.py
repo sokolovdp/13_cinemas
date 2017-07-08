@@ -20,7 +20,6 @@ TIME_UPDATE_PROXY = 30 * 60 - 1  # 30 minutes - 1 sec
 MAX_TIMEOUT_RETRIES = 3
 MAX_403_RETRIES = 3
 NPSB = '\xa0'  # special space character &npsb;
-ERROR = -1
 NO_DATA = 0
 # Global variables
 Rating = namedtuple('movie_rating', ['rating', 'votes'])
@@ -221,7 +220,7 @@ def scrape_rating_votes_kp_result_page(html_result: "str") -> "Rating":
             return Rating(float(rating), int(votes))
     else:
         logger.error("scrape_rating_votes_kp_result_page: no class 'element most_wanted' in page")
-        return Rating(ERROR, ERROR)
+        return Rating(NO_DATA, NO_DATA)
 
 
 def scrape_rating_votes_kp_movie_page(html_movie: "str") -> "Rating":
@@ -231,14 +230,14 @@ def scrape_rating_votes_kp_movie_page(html_movie: "str") -> "Rating":
     rating_block = soup.find('div', attrs={'id': 'block_rating'})
     if not rating_block:
         logger.error("scrape_rating_votes_kp_movie_page: no div with id='block_rating'")
-        return Rating(ERROR, ERROR)
+        return Rating(NO_DATA, NO_DATA)
     else:
         try:
             rating = rating_block.find('span', attrs={'class': 'rating_ball'}).text
             votes = rating_block.find('span', attrs={'class': 'ratingCount'}).text.replace(NPSB, '')
         except AttributeError:
             logger.error("scrape_rating_votes_from_kinopoisk_movie_page: no attrs for span with class='rating...'")
-            return Rating(ERROR, ERROR)
+            return Rating(NO_DATA, NO_DATA)
         else:
             return Rating(float(rating), int(votes))
 
@@ -263,10 +262,7 @@ def scrape_rating_votes_from_kp(page: "str") -> "Rating":
     elif "www.kinopoisk.ru/film/" in page:  # kinopoisk is in the page of the movie
         kp_rating = scrape_rating_votes_kp_movie_page(page)
     else:
-        logger.error("scrape_rating_votes_from_kp: can't get rating and votes from url '{}'".format(page.strip()))
-        kp_rating = Rating(NO_DATA, NO_DATA)
-    if kp_rating.votes == ERROR:  # check if there were some errors
-        logger.error("scrape_rating_votes_from_kp: error, rating and votes set to NO_DATA")
+        logger.error("scrape_rating_votes_from_kp: unknown result pattern")
         kp_rating = Rating(NO_DATA, NO_DATA)
     return kp_rating
 
@@ -274,7 +270,7 @@ def scrape_rating_votes_from_kp(page: "str") -> "Rating":
 def fetch_movie_info(movie_title: "str", af_movie_page: "str") -> "Movie_info":
     assert af_movie_page
     assert movie_title
-
+    # scrape movie info from afisha.ru
     soup = BeautifulSoup(af_movie_page, "lxml")
     af_rating = Rating(scrape_af_movie_rating(soup), scrape_af_movie_votes(soup))
     year = scrape_af_movie_year(soup)
@@ -284,8 +280,10 @@ def fetch_movie_info(movie_title: "str", af_movie_page: "str") -> "Movie_info":
     kp_page = load_html(kp_url_find)
     if kp_page['html']:
         kp_rating = scrape_rating_votes_from_kp(kp_page['html'])
+        if kp_rating.votes == NO_DATA:
+            logger.error("fetch_movie_info: can't scrape votes and rating from url {}".format(kp_page['url']))
     else:
-        logger.error("fetch_movie_info: can't load kinopoisk page {} error {}".format(kp_page['url'], kp_page['err']))
+        logger.error("fetch_movie_info: can't load kinopoisk url {} error {}".format(kp_page['url'], kp_page['err']))
         kp_rating = Rating(NO_DATA, NO_DATA)
     return Movie_info(movie_title, year, af_rating, cinemas, kp_rating)
 
