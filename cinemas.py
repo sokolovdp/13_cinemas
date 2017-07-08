@@ -16,8 +16,7 @@ proxy_url = "http://www.freeproxy-list.ru/api/proxy?token=demo"
 user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
 MAX_RESPONSE_TIMEOUT = 3  # max response timeout to get answer from site
-MAX_TIMEOUT_RETRIES = 3
-MAX_4XX_RETRIES = 3
+MAX_LOAD_RETRIES = 3
 NPSB = '\xa0'  # special space character &npsb;
 NO_DATA = 0
 # Global variables
@@ -77,33 +76,30 @@ def make_response(html=None, url=None, err=None):
 
 
 def load_html(url: "str") -> "dict":
-    timeout_retries = 0
-    retries_4xx = 0
-    while True:
+    error_message = "load_html: unexpected error"
+    for _ in range(MAX_LOAD_RETRIES):
+        time.sleep(random.random())
+        proxy = next_valid_proxy()
         try:
-            proxy = next_valid_proxy()
             response = requests.get(url, headers=user_agent, timeout=MAX_RESPONSE_TIMEOUT, proxies=proxy)
-            if response.status_code == 200:
-                time.sleep(random.random())  # wait random period between 0 - 1 sec
-                return make_response(html=response.text, url=response.url)
-            elif response.status_code == 403 or response.status_code == 400:
-                retries_4xx += 1
-                if timeout_retries >= MAX_4XX_RETRIES:
-                    return make_response(err="load_html: url={} retries={} error 403".format(url, retries_4xx))
-                continue
-            else:
-                logger.error('load_html: url={} response error={}'.format(url, response.status_code))
-                return make_response(err=str(response.status_code))
         except requests.exceptions.Timeout:
-            timeout_retries += 1
-            if timeout_retries >= MAX_TIMEOUT_RETRIES:
-                logger.error('load_html: url={} timeout_retries={}'.format(url, timeout_retries))
-                return make_response(err="load_html timeout error")
-            continue
-        except OSError as ose:  # Tunnel connection failed: 403 Forbidden
+            error_message = 'load_html: timeout error url={}'.format(url)
+        except OSError as ose:  # Proxy connection failed
             remove_from_proxies_list(proxy['http'])
-            logger.error("load_html: OSError! url={} proxy={} err='{}'".format(url, proxy['http'], ose))
-            continue
+            error_message = "load_html: OSError! url={} err='{}'".format(url, ose)
+        else:
+            if response.status_code == 200:
+                result = make_response(html=response.text, url=response.url)
+                break
+            elif response.status_code == 403 or response.status_code == 400:
+                error_message = "load_html: url={} error 403 or 400".format(url)
+            else:
+                error_message = 'load_html: url={} response error={}'.format(url, response.status_code)
+    else:
+        logger.error(error_message)
+        result = make_response(err=error_message)
+
+    return result
 
 
 def fetch_af_page() -> "class 'bytes'":
