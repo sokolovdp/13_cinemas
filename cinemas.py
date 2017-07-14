@@ -23,7 +23,7 @@ AF_MOVIE_SCHEDULE_URL = "https://www.afisha.ru/msk/schedule_cinema_product/{}/"
 
 KP_MOVIE_URL_PATTERN = "www.kinopoisk.ru/film/"
 KP_RATING_API_URL = "http://www.kinopoisk.ru/rating/{}.xml"
-KP_QUERY_URL_1st_PART = "https://www.kinopoisk.ru/index.php?first=yes&what=film&kp_query="  # choose 1st film from list
+KP_QUERY_URL_PART_ONE = "https://www.kinopoisk.ru/index.php?first=yes&what=film&kp_query="  # choose 1st film from list
 
 AF_MOVIE_TITLE_PATTERN = re.compile(r"ru/movie/(\d*)/.>(.*)</a>")
 AF_CINEMAS_PATTERN = re.compile(r"href='https://www.afisha.ru/\w*/cinema/\d*/")
@@ -161,7 +161,7 @@ def scrape_af_info(movies_ids_titles: "list") -> "list":
 
 def form_kp_query_url(title: "str", year: int):
     t_hex = "%".join("{:02x}".format(b) for b in bytearray(title.encode('utf-8'))).upper().replace("%20", "+")
-    return "{}%{}+{}".format(KP_QUERY_URL_1st_PART, t_hex, year)
+    return "{}%{}+{}".format(KP_QUERY_URL_PART_ONE, t_hex, year)
 
 
 def fetch_kp_movie_id(movie_title: "str", year: "int") -> "int":
