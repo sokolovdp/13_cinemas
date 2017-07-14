@@ -11,23 +11,23 @@ import requests
 from bs4 import BeautifulSoup
 
 # Global constants
-http = "http://"
-proxy_service_api_url = "http://www.freeproxy-list.ru/api/proxy?token=demo"
-user_agent = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+HTTP = "http://"
+PROXY_SERVICE_URL = "http://www.freeproxy-list.ru/api/proxy?token=demo"
+USER_AGENT = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
 
-afisha_main_url = "https://www.afisha.ru"
-afisha_timetable_url = "https://www.afisha.ru/msk/schedule_cinema/"
-afisha_movie_url = "https://www.afisha.ru/movie/{}/"
-afisha_movie_schedule_url = "https://www.afisha.ru/msk/schedule_cinema_product/{}/"
+AF_MAIN_URL = "https://www.afisha.ru"
+AF_TIMETABLE_URL = "https://www.afisha.ru/msk/schedule_cinema/"
+AF_MOVIE_URL = "https://www.afisha.ru/movie/{}/"
+AF_MOVIE_SCHEDULE_URL = "https://www.afisha.ru/msk/schedule_cinema_product/{}/"
 
-kp_movie_url_pattern = "www.kinopoisk.ru/film/"
-kp_rating_api_url = "http://www.kinopoisk.ru/rating/{}.xml"
-kp_query_url_1st_part = "https://www.kinopoisk.ru/index.php?first=yes&what=film&kp_query="  # choose 1st film from list
+KP_MOVIE_URL_PATTERN = "www.kinopoisk.ru/film/"
+KP_RATING_API_URL = "http://www.kinopoisk.ru/rating/{}.xml"
+KP_QUERY_URL_1st_PART = "https://www.kinopoisk.ru/index.php?first=yes&what=film&kp_query="  # choose 1st film from list
 
-af_movie_title_pattern = re.compile(r"ru/movie/(\d*)/.>(.*)</a>")
-af_cinemas_pattern = re.compile(r"href='https://www.afisha.ru/\w*/cinema/\d*/")
-year_pattern = re.compile(r"(\d{4})")
+AF_MOVIE_TITLE_PATTERN = re.compile(r"ru/movie/(\d*)/.>(.*)</a>")
+AF_CINEMAS_PATTERN = re.compile(r"href='https://www.afisha.ru/\w*/cinema/\d*/")
+YEAR_PATTERN = re.compile(r"(\d{4})")
 
 MAX_TIMEOUT = 4
 MAX_RETRIES = 3
@@ -42,8 +42,8 @@ live_proxies = dict(proxies=list(), current=0)
 def is_proxy_alive(proxy_ip: "str") -> "bool":
     result = True
     try:
-        proxy = http + proxy_ip
-        resp = requests.get(afisha_timetable_url, proxies=dict(http=proxy, https=proxy), timeout=MAX_TIMEOUT)
+        proxy = HTTP + proxy_ip
+        resp = requests.get(AF_TIMETABLE_URL, proxies=dict(http=proxy, https=proxy), timeout=MAX_TIMEOUT)
     except (OSError, requests.exceptions.Timeout):
         result = False
     else:
@@ -56,7 +56,7 @@ def load_working_proxies():
     global live_proxies
 
     for _ in range(MAX_RETRIES):
-        response = requests.get(proxy_service_api_url, headers=user_agent, timeout=MAX_TIMEOUT)
+        response = requests.get(PROXY_SERVICE_URL, headers=USER_AGENT, timeout=MAX_TIMEOUT)
         if response.ok:
             alive_proxies = [proxy for proxy in response.text.split() if is_proxy_alive(proxy)]
             logger.error("info!!! load_working_proxies: loaded only {} good proxies".format(len(alive_proxies)))
@@ -93,8 +93,8 @@ def load_html(url_to_load: "str") -> "dict":
     for _ in range(MAX_RETRIES):
         time.sleep(random.random())
         try:
-            proxy_url = http + str(live_proxies['proxies'][live_proxies['current']])
-            response = requests.get(url_to_load, headers=user_agent, timeout=MAX_TIMEOUT,
+            proxy_url = HTTP + str(live_proxies['proxies'][live_proxies['current']])
+            response = requests.get(url_to_load, headers=USER_AGENT, timeout=MAX_TIMEOUT,
                                     proxies=dict(http=proxy_url, https=proxy_url))
         except requests.exceptions.Timeout:
             error_message = 'load_html: timeout error url={}'.format(url_to_load)
@@ -116,11 +116,11 @@ def load_html(url_to_load: "str") -> "dict":
 
 
 def fetch_af_movies_titles() -> "list":
-    page = load_html(afisha_timetable_url)
+    page = load_html(AF_TIMETABLE_URL)
     if page['html']:
-        movies_ids_titles = list(set(af_movie_title_pattern.findall(page['html'])))  # remove duplicated titles
+        movies_ids_titles = list(set(AF_MOVIE_TITLE_PATTERN.findall(page['html'])))  # remove duplicated titles
     else:
-        logger.error("fetch_af_movies_titles: page {}, error {}".format(afisha_timetable_url, page['err']))
+        logger.error("fetch_af_movies_titles: page {}, error {}".format(AF_TIMETABLE_URL, page['err']))
         movies_ids_titles = list()
     return movies_ids_titles
 
@@ -132,7 +132,7 @@ def scrape_af_info(movies_ids_titles: "list") -> "list":
     for movie_data in movies_ids_titles:
         mv_id, title = movie_data
         year, cinemas, rating, votes = NO_DATA, NO_DATA, NO_DATA, NO_DATA
-        url_movie = afisha_movie_url.format(mv_id)
+        url_movie = AF_MOVIE_URL.format(mv_id)
         page_movie = load_html(url_movie)
         if page_movie['html']:
             soup = BeautifulSoup(page_movie['html'], "html.parser")
@@ -142,17 +142,17 @@ def scrape_af_info(movies_ids_titles: "list") -> "list":
             try:
                 rating = float(rating_text[4].split(NPSB)[0])
                 votes = int(votes_text.split(' ')[1])
-                year = int(year_pattern.findall(year_text)[0])
+                year = int(YEAR_PATTERN.findall(year_text)[0])
             except ValueError:
                 logger.error("scrape_af_info: value error url={} r={} v={} y={}".format(url_movie, rating_text,
                                                                                         votes_text, year_text))
                 rating, votes, year = NO_DATA, NO_DATA, NO_DATA
         else:
             logger.error("scrape_af_info: movie page {} error {}".format(url_movie, page_movie['err']))
-        url_movie_schedule = afisha_movie_schedule_url.format(mv_id)
+        url_movie_schedule = AF_MOVIE_SCHEDULE_URL.format(mv_id)
         page_schedule = load_html(url_movie_schedule)
         if page_schedule['html']:
-            cinemas = len(af_cinemas_pattern.findall(page_schedule['html']))
+            cinemas = len(AF_CINEMAS_PATTERN.findall(page_schedule['html']))
         else:
             logger.error("scrape_af_info: movie schedule page {} error {}".format(url_movie, page_schedule['err']))
         movies_info.append(dict(title=title, year=year, cinemas=cinemas, af_rating=rating, af_votes=votes))
@@ -161,7 +161,7 @@ def scrape_af_info(movies_ids_titles: "list") -> "list":
 
 def form_kp_query_url(title: "str", year: int):
     t_hex = "%".join("{:02x}".format(b) for b in bytearray(title.encode('utf-8'))).upper().replace("%20", "+")
-    return "{}%{}+{}".format(kp_query_url_1st_part, t_hex, year)
+    return "{}%{}+{}".format(KP_QUERY_URL_1st_PART, t_hex, year)
 
 
 def fetch_kp_movie_id(movie_title: "str", year: "int") -> "int":
@@ -169,8 +169,8 @@ def fetch_kp_movie_id(movie_title: "str", year: "int") -> "int":
     page = load_html(movie_url)
     kp_id = NO_DATA
     if page['html']:
-        if kp_movie_url_pattern in page['url']:  # it is in the kinopoisk movie page
-            kp_id_text = year_pattern.findall(page['url'])[0]
+        if KP_MOVIE_URL_PATTERN in page['url']:  # it is in the kinopoisk movie page
+            kp_id_text = YEAR_PATTERN.findall(page['url'])[0]
         else:
             soup = BeautifulSoup(page['html'], 'html.parser')
             try:
@@ -186,7 +186,7 @@ def fetch_kp_movie_id(movie_title: "str", year: "int") -> "int":
 
 
 def get_kp_rating_votes(kp_id: "int") -> "tuple":
-    api_url = kp_rating_api_url.format(kp_id)
+    api_url = KP_RATING_API_URL.format(kp_id)
     page = load_html(api_url)
     if page['html']:
         soup = BeautifulSoup(page['html'], "html.parser")
@@ -227,7 +227,7 @@ def main(n_top_movies: "int"):
     output_movies_to_console(best_movies, total_titles)
 
 
-def create_logger(log_to_file=False, log_to_console=False):
+def create_logger(log_to_file=False, log_to_console=False) -> "class 'logging.RootLogger'":
     log = logging.getLogger()
     formatter = logging.Formatter('%(asctime)s %(name)-4s %(levelname)-5s %(message)s')
     log.setLevel(logging.ERROR)
