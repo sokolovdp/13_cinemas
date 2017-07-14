@@ -211,7 +211,7 @@ def scrape_kp_info(movies_ap_info: "list") -> "list":
 
 
 def output_movies_to_console(movies_list: "list", total_movies: "int"):
-    print("{} top movies from {} with best ratings are:".format(len(movies_list), total_movies))
+    print("{} top movies from {} with best kp ratings are:".format(len(movies_list), total_movies))
     for mv in movies_list:
         print("  ", mv)
 

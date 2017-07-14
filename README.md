@@ -11,14 +11,15 @@ optional arguments:
 ```
 # Sample output
 ```bazaar
-on 2017-07-08 7 top movies from 92 with best ratings are:
-  1. Машенька(1942) ratings 4.6(7) and 0.0(0) in 1 cinemas
-  2. Время первых(2017) ratings 4.5(529) and 7.5(29322) in 2 cinemas
-  3. Макбет(2014) ratings 4.5(2) and 0.0(0) in 1 cinemas
-  4. Обыкновенный человек(1957) ratings 4.5(2) and 7.3(852) in 1 cinemas
-  5. Вам и не снилось(1980) ratings 4.4(400) and 8.2(41162) in 1 cinemas
-  6. Идеальные незнакомцы(2016) ratings 4.4(265) and 7.5(34436) in 1 cinemas
-  7. Сказ о Петре и Февронии(2017) ratings 4.4(91) and 0.0(0) in 138 cinemas
+today 2017-07-14 80 movies run in cinemas across city
+7 top movies from 80 with best kp ratings are:
+   {'title': 'Стражи Галактики. Часть 2', 'year': 2017, 'cinemas': 2, 'af_rating': 4.2, 'af_votes': 501, 'kp_id': 8412, 'kp_rating': 8.096, 'kp_votes': 1960}
+   {'title': 'Сияние. Сияние', 'year': 1980, 'cinemas': 1, 'af_rating': 3.7, 'af_votes': 9117, 'kp_id': 5492, 'kp_rating': 8.021, 'kp_votes': 227286}
+   {'title': 'Ла-Ла Ленд', 'year': 2016, 'cinemas': 1, 'af_rating': 3.9, 'af_votes': 677, 'kp_id': 8410, 'kp_rating': 7.821, 'kp_votes': 3671}
+   {'title': 'Скафандр и бабочка', 'year': 2007, 'cinemas': 1, 'af_rating': 3.3, 'af_votes': 5554, 'kp_id': 7743, 'kp_rating': 7.817, 'kp_votes': 1191}
+   {'title': 'Большой', 'year': 2016, 'cinemas': 4, 'af_rating': 4.0, 'af_votes': 217, 'kp_id': 1549, 'kp_rating': 7.788, 'kp_votes': 23422}
+   {'title': 'Планета обезьян: Война', 'year': 2017, 'cinemas': 167, 'af_rating': 3.2, 'af_votes': 34, 'kp_id': 8192, 'kp_rating': 7.718, 'kp_votes': 13474}
+   {'title': 'Босс-молокосос', 'year': 2017, 'cinemas': 1, 'af_rating': 4.1, 'af_votes': 335, 'kp_id': 8425, 'kp_rating': 7.666, 'kp_votes': 20834}
 
 Process finished with exit code 0
 ```
