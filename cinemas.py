@@ -11,8 +11,6 @@ import requests
 from bs4 import BeautifulSoup
 
 # Global constants
-HTTP = "http://"
-PROXY_SERVICE_URL = "http://www.freeproxy-list.ru/api/proxy?token=demo"
 USER_AGENT = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                             "Chrome/59.0.3071.104 Safari/537.36"}
 
@@ -29,90 +27,30 @@ AF_MOVIE_TITLE_PATTERN = re.compile(r"ru/movie/(\d*)/.>(.*)</a>")
 AF_CINEMAS_PATTERN = re.compile(r"href='https://www.afisha.ru/\w*/cinema/\d*/")
 YEAR_PATTERN = re.compile(r"(\d{4})")
 
-MAX_TIMEOUT = 4
-MAX_RETRIES = 3
+MAX_TIMEOUT = 5
+MAX_RETRIES = 4
 NPSB = '\xa0'  # special space character &npsb;
 NO_DATA = 0
 MAX_TOP_MOVIES = 20
-
-# Global variables
-live_proxies = dict(proxies=list(), current=0)
-
-
-def is_proxy_alive(proxy_ip: "str") -> "bool":
-    result = True
-    try:
-        proxy = HTTP + proxy_ip
-        resp = requests.get(AF_TIMETABLE_URL, proxies=dict(http=proxy, https=proxy), timeout=MAX_TIMEOUT)
-    except (OSError, requests.exceptions.Timeout):
-        result = False
-    else:
-        if not resp.ok:
-            result = False
-    return result
-
-
-def load_working_proxies():
-    global live_proxies
-
-    for _ in range(MAX_RETRIES):
-        response = requests.get(PROXY_SERVICE_URL, headers=USER_AGENT, timeout=MAX_TIMEOUT)
-        if response.ok:
-            alive_proxies = [proxy for proxy in response.text.split() if is_proxy_alive(proxy)]
-            logger.error("info!!! load_working_proxies: loaded only {} good proxies".format(len(alive_proxies)))
-            if len(alive_proxies):
-                live_proxies['current'] = 0
-                live_proxies['proxies'] = alive_proxies
-                break
-        else:
-            logger.error("load_working_proxies: response.status_code={}".format(response.status_code))
 
 
 def make_response(html=None, url=None, err=None):
     return dict(html=html, url=url, err=err)
 
 
-def take_next_live_proxy():
-    global live_proxies
-    live_proxies['current'] += 1
-    if live_proxies['current'] >= len(live_proxies['proxies']):
-        live_proxies['current'] = 0
-
-
-def remove_current_proxy_from_proxies_list():
-    global live_proxies
-    live_proxies['proxies'].remove(live_proxies['proxies'][live_proxies['current']])
-    if len(live_proxies['proxies']) <= 0:
-        load_working_proxies()
-    else:
-        live_proxies['current'] = 0
-
-
 def load_html(url_to_load: "str") -> "dict":
-    error_message = "load_html: unexpected error"
     for _ in range(MAX_RETRIES):
         time.sleep(random.random())
         try:
-            proxy_url = HTTP + str(live_proxies['proxies'][live_proxies['current']])
-            response = requests.get(url_to_load, headers=USER_AGENT, timeout=MAX_TIMEOUT,
-                                    proxies=dict(http=proxy_url, https=proxy_url))
-        except requests.exceptions.Timeout:
-            error_message = 'load_html: timeout error url={}'.format(url_to_load)
-        except OSError as ose:  # Proxy became inactive
-            remove_current_proxy_from_proxies_list()
-            error_message = "load_html: OSError url={} err='{}'".format(url_to_load, ose)
+            response = requests.get(url_to_load, headers=USER_AGENT, timeout=MAX_TIMEOUT)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as rer:
+            logger.error('load_html: RequestException err={} url={}'.format(rer, url_to_load))
         else:
-            if response.status_code == 200:
-                result = make_response(html=response.text, url=response.url)
-                break
-            else:
-                take_next_live_proxy()
-                error_message = 'load_html: url={} response error={}'.format(url_to_load, response.status_code)
-                logger.error(error_message)
+            return make_response(html=response.text, url=response.url)
     else:
-        result = make_response(err=error_message)
-
-    return result
+        logger.error('load_html: too many retries {} url={}'.format(MAX_RETRIES, url_to_load))
+        return make_response(err=MAX_RETRIES)
 
 
 def fetch_af_movies_titles() -> "list":
@@ -194,7 +132,7 @@ def get_kp_rating_votes(kp_id: "int") -> "tuple":
         rating = float(soup('kp_rating')[0].text)
     else:
         logger.error("get_kp_rating_votes: url {} error {}".format(api_url, page['err']))
-        votes, rating = 0, 0
+        votes, rating = NO_DATA, NO_DATA
     return rating, votes
 
 
@@ -212,8 +150,8 @@ def scrape_kp_info(movies_ap_info: "list") -> "list":
 
 def output_movies_to_console(movies_list: "list", total_movies: "int"):
     print("{} top movies from {} with best kp ratings are:".format(len(movies_list), total_movies))
-    for mv in movies_list:
-        print("  ", mv)
+    for movie_info in movies_list:
+        print("  ", movie_info)
 
 
 def main(n_top_movies: "int"):
@@ -228,35 +166,33 @@ def main(n_top_movies: "int"):
 
 
 def create_logger(log_to_file=False, log_to_console=False) -> "class 'logging.RootLogger'":
-    log = logging.getLogger()
+    new_logger = logging.getLogger()
     formatter = logging.Formatter('%(asctime)s %(name)-4s %(levelname)-5s %(message)s')
-    log.setLevel(logging.ERROR)
+    new_logger.setLevel(logging.ERROR)
     if log_to_file:
-        fh = logging.FileHandler('cinemas_log_file.txt', mode='w')
-        fh.setLevel(logging.ERROR)
-        fh.setFormatter(formatter)
-        log.addHandler(fh)
+        file_handler = logging.FileHandler('cinemas_log_file.txt', mode='w')
+        file_handler.setLevel(logging.ERROR)
+        file_handler.setFormatter(formatter)
+        new_logger.addHandler(file_handler)
     if log_to_console:
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.ERROR)
-        ch.setFormatter(formatter)
-        log.addHandler(ch)
-    return log
+        channel_handler = logging.StreamHandler()
+        channel_handler.setLevel(logging.ERROR)
+        channel_handler.setFormatter(formatter)
+        new_logger.addHandler(channel_handler)
+    return new_logger
 
 
 if __name__ == '__main__':
-    ap = argparse.ArgumentParser(description="finds N movies with highest ratings (N <= {}".format(MAX_TOP_MOVIES))
-    ap.add_argument("--n", dest="n", action="store", type=int, default=7, help="  number of best movies")
+    ap = argparse.ArgumentParser(description="finds N movies with highest kp ratings")
+    ap.add_argument("--top", dest="top", action="store", type=int, default=7, help="  number of top movies (<={})")
     ap.add_argument("--log", dest="log", action="store_true", default=False,
                     help="  create log file 'cinemas_log_file.txt'")
     ap.add_argument("--verbose", dest="verbose", action="store_true", default=False,
                     help="  output debug information to console")
     args = ap.parse_args(sys.argv[1:])
 
-    if 1 <= args.n <= MAX_TOP_MOVIES:
+    if 1 <= args.top <= MAX_TOP_MOVIES:
         logger = create_logger(log_to_file=args.log, log_to_console=args.verbose)
-        load_working_proxies()
-        if live_proxies:
-            main(args.n)
+        main(args.top)
     else:
-        print("invalid parameter --n value {}".format(args.n))
+        print("invalid parameter --top value must be less or equal than {}".format(MAX_TOP_MOVIES))
