@@ -97,7 +97,7 @@ def scrape_af_info(movies_ids_titles: "list") -> "list":
     return movies_info
 
 
-def form_kp_query_url(title: "str", year: int):
+def form_kp_query_url(title: "str", year: int) -> "str":
     t_hex = "%".join("{:02x}".format(b) for b in bytearray(title.encode('utf-8'))).upper().replace("%20", "+")
     return "{}%{}+{}".format(KP_QUERY_URL_PART_ONE, t_hex, year)
 
@@ -107,20 +107,15 @@ def fetch_kp_movie_id(movie_title: "str", year: "int") -> "int":
     page = load_html(movie_url)
     kp_id = NO_DATA
     if page['html']:
-        if KP_MOVIE_URL_PATTERN in page['url']:  # it is in the kinopoisk movie page
-            kp_id_text = YEAR_PATTERN.findall(page['url'])[0]
+        if KP_MOVIE_URL_PATTERN in page['url']:  # it is the kinopoisk movie page
+            kp_id = int(YEAR_PATTERN.findall(page['url'])[0])
         else:
             soup = BeautifulSoup(page['html'], 'html.parser')
             try:
-                kp_id_text = soup.find('a', {'class': 'js-serp-metrika'}).attrs['data-id']
-            except AttributeError:
+                kp_id = int(soup.find('a', {'class': 'js-serp-metrika'}).attrs['data-id'])
+            except (AttributeError, ValueError):
                 logger.error("fetch_kp_movie_id: attr 'data-id' error url {}".format(movie_url))
-                kp_id_text = ''
-        if not kp_id_text:
-            kp_id = NO_DATA
-        else:
-            kp_id = int(kp_id_text)
-    return int(kp_id)
+    return kp_id
 
 
 def get_kp_rating_votes(kp_id: "int") -> "tuple":
