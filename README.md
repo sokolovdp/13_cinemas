@@ -1,18 +1,20 @@
 # Cinemas
+
+**cinemas.py** written in Python 3.6.1 finds top movies from currently running in cinemas with highest kinopoisk ratings
 ```
-finds top N movies with star rating greater than STARS
-usage: cinemas.py [--help] [--n N] [--stars STARS]
+usage: cinemas.py [--help] [--top TOP] [--log] [--verbose]
 optional arguments:
-  --help         show this help message and exit
-  --n N          number of movies
-  --stars STARS  stars rating
-  --log          create log file 'cinemas_log_file.txt'
-  --verbose      output debug information to console
+  --help      show this help message and exit
+  --top TOP   number of top movies
+  --log       create log file 'cinemas_log_file.txt'
+  --verbose   output debug information to console
 ```
-# Sample output
+
+# Sample usage and output
+**python cinemas.py --top=7**
 ```bazaar
-today 2017-07-15 93 movies run in cinemas across city
-7 top movies from 93 with best kp ratings are:
+on 2017-07-15 93 movies run in cinemas across city
+7 top movies from 93 with best kinopoisk ratings are:
    {'title': 'Звезда пленительного счастья', 'year': 1975, 'cinemas': 1, 'af_rating': 4.2, 'af_votes': 51, 'kp_id': 4541, 'kp_rating': 8.252, 'kp_votes': 239754}
    {'title': 'Стражи Галактики. Часть 2', 'year': 2017, 'cinemas': 3, 'af_rating': 4.2, 'af_votes': 501, 'kp_id': 8412, 'kp_rating': 8.096, 'kp_votes': 1960}
    {'title': 'Ла-Ла Ленд', 'year': 2016, 'cinemas': 2, 'af_rating': 3.9, 'af_votes': 678, 'kp_id': 8410, 'kp_rating': 7.821, 'kp_votes': 3671}
