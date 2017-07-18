@@ -1,7 +1,6 @@
 import sys
 import argparse
 import time
-import re
 import random
 import logging
 from datetime import datetime
@@ -10,31 +9,7 @@ from collections import namedtuple
 import requests
 from bs4 import BeautifulSoup
 
-HEADERS = {"USER-AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                         "Chrome/59.0.3071.115 Safari/537.36",
-           "ACCEPT": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-           "CONNECTION": "keep-alive",
-           "ACCEPT_ENCODING": "gzip, deflate, br",
-           "ACCEPT_LANGUAGE": "ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4"}
-
-AFISHA_TIMETABLE_URL = "https://www.afisha.ru/msk/schedule_cinema/"
-AFISHA_MOVIE_URL = "https://www.afisha.ru/movie/{}/"
-AFISHA_MOVIE_SCHEDULE_URL = "https://www.afisha.ru/msk/schedule_cinema_product/{}/"
-AFISHA_MOVIE_TITLE_PATTERN = re.compile(r"ru/movie/(\d*)/.>(.*)</a>")
-AFISHA_CINEMAS_PATTERN = re.compile(r"href='https://www.afisha.ru/\w*/cinema/\d*/")
-YEAR_PATTERN = re.compile(r"(\d{4})")
-
-KINOPOISK_MOVIE_URL_PATTERN = "www.kinopoisk.ru/film/"
-KINOPOISK_API_RATING_URL = "https://www.kinopoisk.ru/rating/{}.xml"
-KINOPOISK_API_SEARH_URL = "https://www.kinopoisk.ru/search/handler-chromium-extensions"
-KINOPOISK_MOVIE_ID_PATTERN = re.compile(r"www.kinopoisk.ru/film/(\d+)")
-
-NPSB = '\xa0'
-MIN_SLEEP = 1.5
-MAX_SLEEP = 3.0
-MAX_TIMEOUT = 6
-MAX_RETRIES = 4
-MAX_TOP_MOVIES = 21
+from cinemas_globals import *
 
 Response = namedtuple('response', ['html', 'url', 'err'])
 
@@ -43,29 +18,29 @@ def make_response(html=None, url=None, err=None):
     return Response(html=html, url=url, err=err)
 
 
-def load_html(url_to_load: "str", params=None) -> "Response":
+def load_html_page(url_to_load: "str", params=None) -> "Response":
     for _ in range(MAX_RETRIES):
         time.sleep(random.uniform(MIN_SLEEP, MAX_SLEEP))
         try:
             response = requests.get(url_to_load, headers=HEADERS, params=params, timeout=MAX_TIMEOUT)
             response.raise_for_status()
         except requests.exceptions.RequestException as rer:
-            logger.error('load_html: RequestException err={} url={}'.format(rer, url_to_load))
+            logger.error('load_html_page: RequestException err={} url={}'.format(rer, url_to_load))
         else:
             return make_response(html=response.text, url=response.url)
     else:
-        logger.error('load_html: too many retries {} url={}'.format(MAX_RETRIES, url_to_load))
+        logger.error('load_html_page: too many retries {} url={}'.format(MAX_RETRIES, url_to_load))
         return make_response(err=MAX_RETRIES)
 
 
-def get_movies_ids_and_titles_from_afisha(html: "str") -> "list":
+def get_movies_ids_and_titles_from_afisha_page(html: "str") -> "list":
     movies_ids_titles = list(set(AFISHA_MOVIE_TITLE_PATTERN.findall(html)))
     return movies_ids_titles
 
 
-def get_rating_votes_year_from_afisha(html: str) -> "tuple":
+def get_rating_votes_year_from_afisha_page(html: "str") -> "tuple":
     rating, votes, year = None, None, None
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(html, SOUP_PARSER)
     rating_text = soup.find('p', attrs={'class': 'stars pngfix'}).text.replace(',', '.').split(' ')
     votes_text = soup.find('p', attrs={'class': 'details s-update-clickcount'}).text.strip()
     year_text = soup.find('span', attrs={'class': 'creation'}).text
@@ -79,7 +54,7 @@ def get_rating_votes_year_from_afisha(html: str) -> "tuple":
     return rating, votes, year
 
 
-def get_cinemas_number_from_afisha(html: str) -> "int":
+def get_cinemas_number_from_afisha_page(html: "str") -> "int":
     return len(AFISHA_CINEMAS_PATTERN.findall(html))
 
 
@@ -87,16 +62,16 @@ def scrape_afisha_for_movies_info(movies_ids_titles: "list") -> "list":
     rating, votes, year, cinemas = None, None, None, None
     movies_info = list()
     for movie_id, movie_title in movies_ids_titles:
-        movie_page = load_html(AFISHA_MOVIE_URL.format(movie_id))
+        movie_page = load_html_page(AFISHA_MOVIE_URL.format(movie_id))
         if movie_page.err is None:
-            rating, votes, year = get_rating_votes_year_from_afisha(movie_page.html)
+            rating, votes, year = get_rating_votes_year_from_afisha_page(movie_page.html)
         else:
             logger.error(
                 "scrape_afisha_for_movies_info: movie page {} error {}".format(AFISHA_MOVIE_URL.format(movie_id),
                                                                                movie_page.err))
-        schedule_page = load_html(AFISHA_MOVIE_SCHEDULE_URL.format(movie_id))
+        schedule_page = load_html_page(AFISHA_MOVIE_SCHEDULE_URL.format(movie_id))
         if schedule_page.err is None:
-            cinemas = get_cinemas_number_from_afisha(schedule_page.html)
+            cinemas = get_cinemas_number_from_afisha_page(schedule_page.html)
         else:
             logger.error(
                 "scrape_afisha_for_movies_info: movie schedule page {} error {}".format(
@@ -105,42 +80,36 @@ def scrape_afisha_for_movies_info(movies_ids_titles: "list") -> "list":
     return movies_info
 
 
-def get_kinopoisk_movie_id(movie_url: "str") -> "int":
+def get_movie_id_from_kinopoisk_page_url(movie_url: "str") -> "int":
     kinopoisk_id = None
     if KINOPOISK_MOVIE_URL_PATTERN in movie_url:
         kinopoisk_id = int(KINOPOISK_MOVIE_ID_PATTERN.findall(movie_url)[0])
     else:
-        logger.error("get_kinopoisk_movie_id: no movie id in the url={}".format(movie_url))
+        logger.error("get_movie_id_from_kinopoisk_page_url: no movie id in the url={}".format(movie_url))
     return kinopoisk_id
 
 
-def get_rating_votes_from_kinopoisk(html: "str") -> "tuple":
+def get_rating_votes_from_kinopoisk_page(html: "str") -> "tuple":
     rating, votes = None, None
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(html, SOUP_PARSER)
     try:
         rating = float(soup('kp_rating')[0].text)
         votes = int(soup('kp_rating')[0]['num_vote'])
     except ValueError:
         logger.error(
-            "get_rating_votes_from_kinopoisk: value errors {} {}".format(soup('kp_rating')[0].text,
-                                                                         soup('kp_rating')[0]['num_vote']))
+            "get_rating_votes_from_kinopoisk_page: value errors {} {}".format(soup('kp_rating')[0].text,
+                                                                              soup('kp_rating')[0]['num_vote']))
     return rating, votes
 
 
 def scrape_kinopoisk_for_movies_info(movies_info_from_afisha: "list") -> "list":
-    assert movies_info_from_afisha
-
     movies_full_info = movies_info_from_afisha.copy()
     for movie in movies_full_info:
-        kinopoisk_id, rating, votes = None, None, None
-        search_page = load_html(KINOPOISK_API_SEARH_URL,
-                                params=dict(query="{} {}".format(movie['title'], movie['year']), go=1))
-        if search_page.err is None:
-            kinopoisk_id = get_kinopoisk_movie_id(search_page.url)
-            if kinopoisk_id is not None:
-                rating_page = load_html(KINOPOISK_API_RATING_URL.format(kinopoisk_id))
-                if rating_page.err is None:
-                    rating, votes = get_rating_votes_from_kinopoisk(rating_page.html)
+        search_page = load_html_page(KINOPOISK_API_SEARH_URL,
+                                     params=dict(query="{} {}".format(movie['title'], movie['year']), go=1))
+        kinopoisk_id = get_movie_id_from_kinopoisk_page_url(search_page.url) if search_page.url else None
+        rating_page = load_html_page(KINOPOISK_API_RATING_URL.format(kinopoisk_id)) if kinopoisk_id else None
+        rating, votes = get_rating_votes_from_kinopoisk_page(rating_page.html) if rating_page else None, None
         movie["kp_id"], movie["kp_rating"], movie["kp_votes"] = kinopoisk_id, rating, votes
     return movies_full_info
 
@@ -152,11 +121,11 @@ def print_result_to_console(movies_list: "list", total_movies: "int"):
 
 
 def main(n_top_movies: "int"):
-    afisha_timetable_page = load_html(AFISHA_TIMETABLE_URL)
+    afisha_timetable_page = load_html_page(AFISHA_TIMETABLE_URL)
     if afisha_timetable_page.err is not None:
         logger.error("can't load afisha timetable, error {}".format(afisha_timetable_page.err))
     else:
-        movies_ids_titles = get_movies_ids_and_titles_from_afisha(afisha_timetable_page.html)
+        movies_ids_titles = get_movies_ids_and_titles_from_afisha_page(afisha_timetable_page.html)
         total_titles = len(movies_ids_titles)
         print("on {} {} movies run in cinemas across city".format(datetime.today().strftime('%Y-%m-%d'), total_titles))
         movies_afisha_info = scrape_afisha_for_movies_info(movies_ids_titles)
