@@ -14,7 +14,6 @@ AFISHA_MOVIE_TITLE_PATTERN = re.compile(r"ru/movie/(\d*)/.>(.*)</a>")
 AFISHA_CINEMAS_PATTERN = re.compile(r"href='https://www.afisha.ru/\w*/cinema/\d*/")
 YEAR_PATTERN = re.compile(r"(\d{4})")
 
-KINOPOISK_MOVIE_URL_PATTERN = "www.kinopoisk.ru/film/"
 KINOPOISK_API_RATING_URL = "https://www.kinopoisk.ru/rating/{}.xml"
 KINOPOISK_API_SEARH_URL = "https://www.kinopoisk.ru/search/handler-chromium-extensions"
 KINOPOISK_MOVIE_ID_PATTERN = re.compile(r"www.kinopoisk.ru/film/(\d+)")
